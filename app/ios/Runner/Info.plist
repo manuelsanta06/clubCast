@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>ClubCast necesita acceder a la cámara para previsualizar y transmitir los partidos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ClubCast necesita acceder al micrófono para transmitir el audio de los partidos.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
