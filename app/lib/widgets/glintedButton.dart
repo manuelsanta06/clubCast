@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class GlintedButton extends StatelessWidget{
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   final BorderRadius borderRadius;
   final EdgeInsetsGeometry padding;

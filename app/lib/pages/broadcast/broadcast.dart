@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 
 enum BroadcastScene{preMatch,match,halftime,penalty,postMatch}
+enum BroadcastState{off,loading,on,finished}
 
 abstract final class BroadcastColors{
   //BG
@@ -15,6 +16,7 @@ abstract final class BroadcastColors{
   static const primary  =Color(0xFF7656B3);
   static const positive =Color(0xFF249D48);
   static const negative =Color(0xFFC83C42);
+  static const grey     =Color(0xFF424242);
 
   //Text
   static const text         =Color(0xFFF5F5F7);
@@ -29,12 +31,16 @@ class BroadcastPage extends StatefulWidget{
 }
 
 class _BroadcastPageState extends State<BroadcastPage>{
+  final streamUrl='rtmp://192.168.0.113:1935';
+  final streamKey='test';
+
   final _cameraController=CameraController(
     ResolutionPreset.veryHigh,
     enableAudio:false,
   );
 
   String? _cameraError;
+  BroadcastState state=BroadcastState.off;
   BroadcastScene scene=BroadcastScene.preMatch;
 
   @override
@@ -58,15 +64,17 @@ class _BroadcastPageState extends State<BroadcastPage>{
     return Scaffold(body:SafeArea(child:
         Row(children:[
           Expanded(flex:60,child:Column(children:[
-            if(true)
             Expanded(child:Center(
               child:ValueListenableBuilder<CameraValue>(
                 valueListenable:_cameraController,
                 builder:(context,value,child){
                   final error=_cameraError??value.errorDescription;
 
-                  if(error!=null)
+                  if(_cameraError!=null){
                     return Text(l10n.cameraUnavailable);
+                  }
+                  //if(error!=null)
+                  //  return Text(l10n.cameraUnavailable);
 
                   if(value.isInitialized!=true)
                     return const CircularProgressIndicator();
@@ -115,11 +123,48 @@ class _BroadcastPageState extends State<BroadcastPage>{
           Expanded(flex:40,child:Column(spacing:8,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
             //TOP BAR
             Row(spacing:5,children:[
+              if(state==BroadcastState.on)
               GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.positive,
+                onPressed:()=>setState((){
+                  state=BroadcastState.off;
+                  _cameraController.stopMultiStreaming();
+                }),
+                mainColor:BroadcastColors.negative,
                 padding:EdgeInsets.all(5),
                 child:Row(children:[Icon(Icons.cell_tower),Text("transmitiendo")]),
+              ),
+              if(state==BroadcastState.off)
+              GlintedButton(
+                onPressed:()=>setState((){
+                  state=BroadcastState.loading;
+                  _cameraController.startVideoStreaming('$streamUrl/$streamKey',protocol:StreamingProtocol.rtmp)
+                    .then(
+                      (value)=>setState((){
+                        state=BroadcastState.on;
+                      }),onError:(error){
+                        debugPrint('No se pudo iniciar la transmisión: $error');
+                        if(!mounted)return;
+                        setState((){
+                          state=BroadcastState.off;
+                        });
+                      });
+                }),
+                mainColor:BroadcastColors.positive,
+                padding:EdgeInsets.all(5),
+                child:Row(children:[Icon(Icons.cell_tower),Text("Transmitir")]),
+              ),
+              if(state==BroadcastState.loading)
+              GlintedButton(
+                onPressed:null,
+                mainColor:BroadcastColors.grey,
+                padding:EdgeInsets.all(5),
+                child:Row(children:[
+                  SizedBox.square(
+                    dimension:IconTheme.of(context).size,
+                    child:const CircularProgressIndicator(strokeWidth:2),
+                  ),
+                  Text(" Conectando")
+                ]),
               ),
               Expanded(child:SizedBox()),
               GlintedButton(
@@ -148,7 +193,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
             Row(spacing:8,children:[
               Expanded(child:AspectRatio(aspectRatio:4,child:GlintedButton(
                 onPressed:(){},
-                mainColor:Colors.grey.shade800,
+                mainColor:BroadcastColors.grey,
                 child:Icon(Icons.abc),
               ))),
             ]),
@@ -189,7 +234,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
               ))),
               Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
                 onPressed:(){},
-                mainColor:Colors.grey.shade800,
+                mainColor:BroadcastColors.grey,
                 child:Icon(Icons.play_arrow),
               ))),
               Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
