@@ -1,0 +1,6 @@
+{
+  "@@locale": "es",
+  "cameraUnavailable": "No se pudo abrir la cámara.",
+  "startBroadcast": "Iniciar transmisión",
+  "stopBroadcast": "Detener transmisión"
+}
