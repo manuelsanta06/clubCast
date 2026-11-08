@@ -5,7 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 
 enum BroadcastScene{preMatch,match,halftime,penalty,postMatch}
-enum BroadcastState{off,loading,on,finished}
+enum BroadcastState{
+  idle,
+  connecting,
+  live,
+  reconnecting,
+  stopping,
+  failed,
+}
 
 abstract final class BroadcastColors{
   //BG
@@ -31,7 +38,7 @@ class BroadcastPage extends StatefulWidget{
 }
 
 class _BroadcastPageState extends State<BroadcastPage>{
-  final streamUrl='rtmp://192.168.0.113:1935';
+  final streamUrl='rtmp://192.168.1.74:1935';
   final streamKey='test';
 
   final _cameraController=CameraController(
@@ -40,7 +47,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
   );
 
   String? _cameraError;
-  BroadcastState state=BroadcastState.off;
+  BroadcastState state=BroadcastState.connecting;
   BroadcastScene scene=BroadcastScene.preMatch;
 
   @override
@@ -50,10 +57,21 @@ class _BroadcastPageState extends State<BroadcastPage>{
       DeviceOrientation.landscapeLeft,
       //DeviceOrientation.landscapeRight,
     ]);
-    _initializeCamera();
+    _initializeCamera().then((v){
+      if(!mounted)return;
+      _cameraController.addListener(_onCameraChanged);
+      setState((){
+        state=_cameraController.value.isInitialized==true
+          ?BroadcastState.idle
+          :BroadcastState.failed;
+      });
+    },onError:(error){
+      debugPrint(error);
+    });
   }
   @override
   void dispose(){
+    _cameraController.removeListener(_onCameraChanged);
     _cameraController.dispose();
     super.dispose();
   }
@@ -68,13 +86,9 @@ class _BroadcastPageState extends State<BroadcastPage>{
               child:ValueListenableBuilder<CameraValue>(
                 valueListenable:_cameraController,
                 builder:(context,value,child){
-                  final error=_cameraError??value.errorDescription;
-
                   if(_cameraError!=null){
                     return Text(l10n.cameraUnavailable);
                   }
-                  //if(error!=null)
-                  //  return Text(l10n.cameraUnavailable);
 
                   if(value.isInitialized!=true)
                     return const CircularProgressIndicator();
@@ -123,50 +137,8 @@ class _BroadcastPageState extends State<BroadcastPage>{
           Expanded(flex:40,child:Column(spacing:8,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
             //TOP BAR
             Row(spacing:5,children:[
-              if(state==BroadcastState.on)
-              GlintedButton(
-                onPressed:()=>setState((){
-                  state=BroadcastState.off;
-                  _cameraController.stopMultiStreaming();
-                }),
-                mainColor:BroadcastColors.negative,
-                padding:EdgeInsets.all(5),
-                child:Row(children:[Icon(Icons.cell_tower),Text("transmitiendo")]),
-              ),
-              if(state==BroadcastState.off)
-              GlintedButton(
-                onPressed:()=>setState((){
-                  state=BroadcastState.loading;
-                  _cameraController.startVideoStreaming('$streamUrl/$streamKey',protocol:StreamingProtocol.rtmp)
-                    .then(
-                      (value)=>setState((){
-                        state=BroadcastState.on;
-                      }),onError:(error){
-                        debugPrint('No se pudo iniciar la transmisión: $error');
-                        if(!mounted)return;
-                        setState((){
-                          state=BroadcastState.off;
-                        });
-                      });
-                }),
-                mainColor:BroadcastColors.positive,
-                padding:EdgeInsets.all(5),
-                child:Row(children:[Icon(Icons.cell_tower),Text("Transmitir")]),
-              ),
-              if(state==BroadcastState.loading)
-              GlintedButton(
-                onPressed:null,
-                mainColor:BroadcastColors.grey,
-                padding:EdgeInsets.all(5),
-                child:Row(children:[
-                  SizedBox.square(
-                    dimension:IconTheme.of(context).size,
-                    child:const CircularProgressIndicator(strokeWidth:2),
-                  ),
-                  Text(" Conectando")
-                ]),
-              ),
-              Expanded(child:SizedBox()),
+              _buildBroadcastControl(),
+              const Spacer(),
               GlintedButton(
                 onPressed:(){},
                 mainColor:BroadcastColors.negative,
@@ -271,5 +243,121 @@ class _BroadcastPageState extends State<BroadcastPage>{
 
       setState((){_cameraError='could not open camera: $error';});
     }
+  }
+
+  void _onCameraChanged(){
+    if(!mounted)return;
+
+    final event=_cameraController.value.event;
+    if(event==null)return;
+
+    final sessionActive=
+      state ==BroadcastState.connecting||
+      state ==BroadcastState.live||
+      state ==BroadcastState.reconnecting;
+      if(!sessionActive)return;
+
+      BroadcastState nextState;
+
+      switch(event['eventType']){
+        case 'success':
+          nextState=BroadcastState.live;
+          break;
+
+        case 'rtmp_retry':
+          nextState=BroadcastState.reconnecting;
+          break;
+
+        case 'rtmp_stopped':
+        case 'camera_closing':
+          nextState=BroadcastState.failed;
+          debugPrint('Transmisión interrumpida: $event');
+          break;
+
+        default:
+          return;
+      }
+
+      if(nextState==state)return;
+
+      setState((){state=nextState;});
+  }
+
+  Widget _buildBroadcastControl(){
+    switch (state){
+      case BroadcastState.idle:
+        return GlintedButton(
+          onPressed:_startStreaming,
+          mainColor:BroadcastColors.positive,
+          padding:EdgeInsets.symmetric(vertical:5,horizontal:3),
+          child:Row(children:[Icon(Icons.play_arrow),Text('Transmitir')]),
+        );
+
+      case BroadcastState.live:
+      case BroadcastState.reconnecting:
+        return GlintedButton(
+          onPressed:_stopStreaming,
+          mainColor:BroadcastColors.negative,
+          padding:EdgeInsets.symmetric(vertical:5,horizontal:3),
+          child:Row(children:state==BroadcastState.live?[
+            Icon(Icons.cell_tower),
+            Text("Transmitiendo")
+          ]:[
+            SizedBox.square(
+              dimension:IconTheme.of(context).size,
+              child:const CircularProgressIndicator(strokeWidth:2),
+            ),
+            Text("Reconectando · Detener"),
+          ]),
+        );
+
+      case BroadcastState.connecting:
+      case BroadcastState.stopping:
+        return GlintedButton(
+          onPressed:null,
+          mainColor:BroadcastColors.grey,
+          padding:EdgeInsets.symmetric(vertical:5,horizontal:3),
+          child:Row(children:[
+            SizedBox.square(
+              dimension:IconTheme.of(context).size,
+              child:const CircularProgressIndicator(strokeWidth:2),
+            ),
+            Text(state==BroadcastState.connecting
+              ?'Conectando…':'Deteniendo…',
+            ),
+          ]),
+        );
+
+      case BroadcastState.failed:
+        return GlintedButton(
+          onPressed:_retryStreaming,
+          mainColor:BroadcastColors.positive,
+          padding:EdgeInsets.symmetric(vertical:5,horizontal:3),
+          child:Text('Reintentar'),
+        );
+    }
+  }
+
+  void _startStreaming()async{
+    setState((){state=BroadcastState.connecting;});
+    try{
+      await _cameraController.startVideoStreaming(
+        '$streamUrl/$streamKey',protocol:StreamingProtocol.rtmp);
+    }catch(error){
+      debugPrint('No se pudo iniciar: $error');
+      if(!mounted)return;
+      setState((){state=BroadcastState.failed;});
+    }
+  }
+
+  void _stopStreaming(){
+    state=BroadcastState.stopping;
+    _cameraController.stopVideoStreaming().then((a){
+      if(!mounted)return;
+      setState((){state=BroadcastState.idle;});
+    });
+  }
+
+  void _retryStreaming(){
   }
 }
