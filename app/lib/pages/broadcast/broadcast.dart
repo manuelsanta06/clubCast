@@ -350,12 +350,22 @@ class _BroadcastPageState extends State<BroadcastPage>{
     }
   }
 
-  void _stopStreaming(){
-    state=BroadcastState.stopping;
-    _cameraController.stopVideoStreaming().then((a){
+  Future<void> _stopStreaming()async{
+    setState((){state=BroadcastState.stopping;});
+
+    try{
+      await _cameraController.stopVideoStreaming();
+
       if(!mounted)return;
+
       setState((){state=BroadcastState.idle;});
-    });
+    }catch(error){
+      debugPrint('No se pudo detener la transmisión: $error');
+
+      if(!mounted)return;
+
+      setState((){state=BroadcastState.failed;});
+    }
   }
 
   void _retryStreaming(){
