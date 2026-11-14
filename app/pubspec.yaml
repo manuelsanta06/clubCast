@@ -12,7 +12,8 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   intl: any
-  rtmp_streaming: ^3.0.0
+  rtmp_streaming:
+    path: ../packages/rtmp_streaming
 
 dev_dependencies:
   flutter_test:

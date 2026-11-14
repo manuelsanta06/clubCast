@@ -147,10 +147,9 @@ packages:
   rtmp_streaming:
     dependency: "direct main"
     description:
-      name: rtmp_streaming
-      sha256: "4a67a812ad22392b7e4e3cbcabe8baa5545816a0b99df492e1f937af6c8a937b"
-      url: "https://pub.dev"
-    source: hosted
+      path: "../packages/rtmp_streaming"
+      relative: true
+    source: path
     version: "3.0.0"
   sky_engine:
     dependency: transitive
