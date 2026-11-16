@@ -105,6 +105,9 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
 import java.io.*
 import java.util.Locale
+import com.app.rtmp_streaming.overlays.OverlayEngine
+import com.app.rtmp_streaming.overlays.OverlayFilter
+import com.pedro.library.view.GlInterface
 
 
 class CameraNativeView(
@@ -190,6 +193,9 @@ class CameraNativeView(
     private var pitchShiftEffect: PitchShiftEffect? = null
     /** Overlay object filter (text/image); cleared via clearOverlay */
     private var overlayFilter: BaseFilterRender? = null
+    private var overlayEngine:OverlayEngine?=null
+    private var moduleFilter:OverlayFilter?=null
+    private var moduleGl:GlInterface?=null
     /** RootEncoder 2.7.0+：仅在编码器 prepare 前应用 BT.709 色彩配置。 */
     private val encoderColorSettings = EncoderColorSettings()
     /** RootEncoder 2.7.0+：RTMP 周期 ping，用于 RTT（须在与 startStream 前对 RtmpStreamClient 设置） */
@@ -1061,6 +1067,7 @@ class CameraNativeView(
         overlayFilter = null
         filterType?.let { setFilter(it, currentFilterPath, internalResult) }
         overlay?.invoke()
+        restoreOverlayModules()
         pitchShiftEffect = null
         if (selectedPitch != 1.0) setPitchShift(selectedPitch, internalResult)
         if (activeVideoSource() is Camera2Source) {
@@ -1466,7 +1473,7 @@ class CameraNativeView(
           when (type) {
             0 -> {
               val f = BasicDeformationFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1474,7 +1481,7 @@ class CameraNativeView(
             }
             1 -> {
               val f = BeautyFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1482,7 +1489,7 @@ class CameraNativeView(
             }
             2 -> {
               val f = BlackFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1490,7 +1497,7 @@ class CameraNativeView(
             }
             3 -> {
               val f = BlurFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1498,7 +1505,7 @@ class CameraNativeView(
             }
             4 -> {
               val f = BrightnessFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1506,7 +1513,7 @@ class CameraNativeView(
             }
             5 -> {
               val f = CartoonFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1518,7 +1525,7 @@ class CameraNativeView(
                 return
               }
               val chromaFilterRender = ChromaFilterRender()
-              activeGlInterface()?.setFilter(chromaFilterRender)
+              replaceVideoFilter(chromaFilterRender)
               chromaFilterRender.setImage(
                 BitmapFactory.decodeFile(filePath)
               )
@@ -1529,7 +1536,7 @@ class CameraNativeView(
             }
             7 -> {
               val f = ChromaticAberrationFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1537,7 +1544,7 @@ class CameraNativeView(
             }
             8 -> {
               val f = CircleFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1545,7 +1552,7 @@ class CameraNativeView(
             }
             9 -> {
               val f = ColorFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1553,7 +1560,7 @@ class CameraNativeView(
             }
             10 -> {
               val f = ContrastFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1564,7 +1571,7 @@ class CameraNativeView(
                 //crop center of the image with 40% of width and 40% of height
                 setCropArea(30f, 30f, 40f, 40f)
               }
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1572,7 +1579,7 @@ class CameraNativeView(
             }
             12 -> {
               val f = DistortedTvFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1580,7 +1587,7 @@ class CameraNativeView(
             }
             13 -> {
               val f = DuotoneFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1588,7 +1595,7 @@ class CameraNativeView(
             }
             14 -> {
               val f = EarlyBirdFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1596,7 +1603,7 @@ class CameraNativeView(
             }
             15 -> {
               val f = EdgeDetectionFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1604,7 +1611,7 @@ class CameraNativeView(
             }
             43 -> {
               val f = EdgeDetectionFilterRender(false)
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1612,7 +1619,7 @@ class CameraNativeView(
             }
             16 -> {
               val f = ExposureFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1620,7 +1627,7 @@ class CameraNativeView(
             }
             17 -> {
               val f = FireFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1628,7 +1635,7 @@ class CameraNativeView(
             }
             18 -> {
               val f = GammaFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1636,7 +1643,7 @@ class CameraNativeView(
             }
             19 -> {
               val f = GlitchFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1651,7 +1658,7 @@ class CameraNativeView(
               val inputStream = FileInputStream(file)
               val gifObjectFilterRender = GifFilterRender()
               gifObjectFilterRender.setGif(inputStream)
-              activeGlInterface()?.setFilter(gifObjectFilterRender)
+              replaceVideoFilter(gifObjectFilterRender)
               gifObjectFilterRender.setScale(50f, 50f)
               gifObjectFilterRender.setPosition(TranslateTo.BOTTOM)
               spriteGestureController.setSprite(gifObjectFilterRender.sprite)
@@ -1662,7 +1669,7 @@ class CameraNativeView(
             }
             21 -> {
               val f = GreyScaleFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1670,7 +1677,7 @@ class CameraNativeView(
             }
             22 -> {
               val f = HalftoneLinesFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1682,7 +1689,7 @@ class CameraNativeView(
                 return
               }
               val imageObjectFilterRender = ImageFilterRender()
-              activeGlInterface()?.setFilter(imageObjectFilterRender)
+              replaceVideoFilter(imageObjectFilterRender)
               imageObjectFilterRender.setImage(
                 BitmapFactory.decodeFile(filePath)
               )
@@ -1697,7 +1704,7 @@ class CameraNativeView(
             }
             24 -> {
               val f = Image70sFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1705,7 +1712,7 @@ class CameraNativeView(
             }
             25 -> {
               val f = LamoishFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1713,7 +1720,7 @@ class CameraNativeView(
             }
             26 -> {
               val f = MoneyFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1721,7 +1728,7 @@ class CameraNativeView(
             }
             27 -> {
               val f = NegativeFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1729,7 +1736,7 @@ class CameraNativeView(
             }
             28 -> {
               val f = NoiseFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1737,7 +1744,7 @@ class CameraNativeView(
             }
             29 -> {
               val f = PixelatedFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1745,7 +1752,7 @@ class CameraNativeView(
             }
             30 -> {
               val f = PolygonizationFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1753,7 +1760,7 @@ class CameraNativeView(
             }
             31 -> {
               val f = RainbowFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1761,7 +1768,7 @@ class CameraNativeView(
             }
             32 -> {
               val rgbSaturationFilterRender = RGBSaturationFilterRender()
-              activeGlInterface()?.setFilter(rgbSaturationFilterRender)
+              replaceVideoFilter(rgbSaturationFilterRender)
               rgbSaturationFilterRender.setRGBSaturation(1f, 0.8f, 0.8f)
               currentFilter = rgbSaturationFilterRender
               currentFilterType = type
@@ -1770,7 +1777,7 @@ class CameraNativeView(
             }
             33 -> {
               val f = RippleFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1778,7 +1785,7 @@ class CameraNativeView(
             }
             34 -> {
               val rotationFilterRender = RotationFilterRender()
-              activeGlInterface()?.setFilter(rotationFilterRender)
+              replaceVideoFilter(rotationFilterRender)
               rotationFilterRender.rotation = 90
               currentFilter = rotationFilterRender
               currentFilterType = type
@@ -1787,7 +1794,7 @@ class CameraNativeView(
             }
             35 -> {
               val f = SaturationFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1795,7 +1802,7 @@ class CameraNativeView(
             }
             36 -> {
               val f = SepiaFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1803,7 +1810,7 @@ class CameraNativeView(
             }
             37 -> {
               val f = SharpnessFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1811,7 +1818,7 @@ class CameraNativeView(
             }
             38-> {
               val f = SnowFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1844,7 +1851,7 @@ class CameraNativeView(
                       }
                   }
               }
-              activeGlInterface()?.setFilter(surfaceFilterRender)
+              replaceVideoFilter(surfaceFilterRender)
               surfaceFilterRender.setScale(50f, 33.3f)
               spriteGestureController.setSprite(surfaceFilterRender.sprite)
               currentFilter = surfaceFilterRender
@@ -1854,7 +1861,7 @@ class CameraNativeView(
             }
             40 -> {
               val f = TemperatureFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -1862,7 +1869,7 @@ class CameraNativeView(
             }
             41 -> {
               val textObjectFilterRender = TextFilterRender()
-              activeGlInterface()?.setFilter(textObjectFilterRender)
+              replaceVideoFilter(textObjectFilterRender)
               textObjectFilterRender.setText("Hello world", 22f, Color.RED)
               textObjectFilterRender.setScale(50f, 50f)
               textObjectFilterRender.setPosition(TranslateTo.CENTER)
@@ -1874,7 +1881,7 @@ class CameraNativeView(
             }
             42 -> {
               val f = ZebraFilterRender()
-              activeGlInterface()?.setFilter(f)
+              replaceVideoFilter(f)
               currentFilter = f
               currentFilterType = type
               currentFilterPath = filePath
@@ -2058,6 +2065,7 @@ class CameraNativeView(
             val previewSize = CameraUtils.computeBestPreviewSize(getActivity(), cameraName, preset)
             val size = customVideoSize ?: (previewSize["size"] as Size)
             genericCamera.startPreview(targetCamera, size.width, size.height)
+            restoreOverlayModules()
             true
         } catch (e: CameraAccessException) {
             if (genericStream?.isOnPreview == true) {
@@ -2248,6 +2256,33 @@ class CameraNativeView(
             "bottomRight" -> TranslateTo.BOTTOM_RIGHT
             else -> TranslateTo.CENTER
         }
+    }
+
+    fun overlayCommand(data:Map<*,*>,result:MethodChannel.Result){
+        val engine=overlayEngine?:OverlayEngine().also{overlayEngine=it}
+        engine.execute(data,result){restoreOverlayModules()}
+    }
+
+    private fun restoreOverlayModules(){
+        val engine=overlayEngine?:return
+        val gl=activeGlInterface()?:return
+        val filter=moduleFilter
+        if(engine.scene.frame.isEmpty()){
+            if(moduleGl===gl && filter!=null && !filter.released)gl.removeFilter(filter)
+            moduleFilter=null
+            moduleGl=null
+            return
+        }
+        if(moduleGl===gl && filter!=null && !filter.released)return
+        moduleFilter=OverlayFilter(engine.scene).also{gl.addFilter(it)}
+        moduleGl=gl
+    }
+
+    // Keep ordinary video filters at index zero without replacing a module filter
+    // (RootEncoder's setFilter defaults to replacing index zero).
+    private fun replaceVideoFilter(filter:BaseFilterRender){
+        val gl=activeGlInterface()?:return
+        if(currentFilter==null)gl.addFilter(0,filter) else gl.setFilter(0,filter)
     }
 
     private fun clearOverlayInternal() {
@@ -3327,7 +3362,7 @@ class CameraNativeView(
 
     fun detachActivity() {
         dartMessenger?.sendCameraClosingEvent()
-        dispose()
+        releaseCamera()
     }
 
     fun reattachActivity(activity: Activity) {
@@ -3340,11 +3375,19 @@ class CameraNativeView(
     }
 
     override fun dispose() {
+        overlayEngine?.dispose()
+        overlayEngine=null
+        releaseCamera()
+    }
+
+    private fun releaseCamera() {
         callbackGeneration++
         glView.holder.removeCallback(this)
         releaseFilterPlayer()
         restoreOverlay = null
         currentFilterType = null
+        moduleFilter=null
+        moduleGl=null
         isSurfaceCreated = false
         resumeStreamAfterSurfaceCreated = false
         isRestoringFromSurfaceDestroy = false

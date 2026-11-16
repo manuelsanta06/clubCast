@@ -11,6 +11,6 @@ internal object CameraMethodPolicy {
         "lockExposure", "unlockExposure", "isExposureLocked", "lockWhiteBalance", "unlockWhiteBalance",
         "isWhiteBalanceLocked", "tapToMeter", "requestKeyFrame", "setManualExposure", "setCaptureTelemetry",
         "getCameraControls", "setZoom", "setAutoFocus", "tapToFocus", "feedPcmAudio", "startMultiStreaming",
-        "stopStreamingDestination", "stopMultiStreaming", "requestScreenCapture"
+        "stopStreamingDestination", "stopMultiStreaming", "requestScreenCapture", "overlayCommand"
     )
 }

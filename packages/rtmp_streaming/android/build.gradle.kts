@@ -42,6 +42,7 @@ android {
 
     defaultConfig {
         minSdk = 21
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     lint {
@@ -57,6 +58,8 @@ dependencies {
     implementation("com.github.pedroSG94.RootEncoder:library:2.8.1")
     implementation("com.github.pedroSG94.RootEncoder:extra-sources:2.8.1")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     // CameraX comes transitively from extra-sources (runtime); no compile deps needed
     // for facing-only CameraXSource.switchCamera().
 }

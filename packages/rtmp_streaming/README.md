@@ -1,5 +1,8 @@
 # rtmp_streaming
 
+This local fork includes Android overlay modules (text, images and shapes composed
+into the video). See [the overlay guide](OVERLAYS.md) and [scoreboard example](example/lib/scoreboard.dart).
+
 Preview geometry uses **displayed** pixel dimensions: `controller.value.aspectRatio` is width / height. Listen to the controller to rebuild layout after rotation or capture-preset changes. Both native backends apply their own camera orientation (`previewQuarterTurns` is normally zero); do not manually swap `previewSize` or rotate it again. Explicit encoding sizes are preserved; an active output keeps its encoded dimensions until restarted. Start/stop/dispose operations are serialized: duplicate starts fail with `operationInProgress`, and stop/dispose wait for any outstanding native start and cleanup.
 
 Apps built with Xcode 27 must adopt the UIScene lifecycle. Follow [Flutter’s migration guide](https://docs.flutter.dev/release/breaking-changes/uiscenedelegate); the example registers plugins in `didInitializeImplicitFlutterEngine` and uses `FlutterSceneDelegate`.

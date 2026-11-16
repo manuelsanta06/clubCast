@@ -43,7 +43,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
 
   final _cameraController=CameraController(
     ResolutionPreset.veryHigh,
-    enableAudio:false,
+    enableAudio:true,
   );
 
   String? _cameraError;
@@ -78,7 +78,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
 
   @override
   Widget build(BuildContext context){
-  _cameraController.setOverlayText(text:"hola")
+  _cameraController.setOverlayText(text:"hola");
     final l10n=AppLocalizations.of(context)!;
     return Scaffold(body:SafeArea(child:
         Row(children:[

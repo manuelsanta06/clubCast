@@ -6,6 +6,11 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'src/overlays/modules.dart';
+
+export 'src/overlays/elements.dart' show OverlayElement,OverlayText,OverlayTextAlign,OverlayRect,OverlayOval,OverlayCircle,OverlayImage;
+export 'src/overlays/module.dart';
+export 'src/overlays/modules.dart' show OverlayModules,OverlayDirection;
 
 final MethodChannel _channel = const MethodChannel('com.rtmp_streaming');
 
@@ -690,6 +695,11 @@ class CameraController extends ValueNotifier<CameraValue> {
     final data = await _invokeNative<Map<dynamic, dynamic>>('getCapabilities');
     return StreamingCapabilities.fromMap(data!);
   }
+
+  /// Native Android modules shared by the camera preview and encoded video.
+  /// Use after CameraPreview is mounted. State survives stream restarts, but not
+  /// disposing this controller. The coordinate canvas is always 1280×720.
+  late final overlays=OverlayModules((args)=>_invokeNative<void>('overlayCommand',args));
 
   Future<T?> _invokeNative<T>(
     String method, [
@@ -2602,6 +2612,7 @@ class CameraController extends ValueNotifier<CameraValue> {
   @override
   Future<void> dispose() {
     if (_disposing != null) return _disposing!;
+    overlays.close();
     value = value.copyWith(isStreaming: false, isRecordingVideo: false);
     _isDisposed = true;
     _operationGeneration++;

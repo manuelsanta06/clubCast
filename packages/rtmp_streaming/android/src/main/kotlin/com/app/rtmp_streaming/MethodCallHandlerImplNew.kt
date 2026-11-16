@@ -101,7 +101,7 @@ class MethodCallHandlerImplNew(
                         add("g711")
                     },
                     "features" to mapOf("recordingPause" to true, "zoom" to true,
-                        "focus" to true, "overlays" to true, "filters" to true,
+                        "focus" to true, "overlays" to true, "overlayModules" to true, "filters" to true,
                         "screenCapture" to true, "uvc" to true, "pcmInput" to true,
                         "whipBearerToken" to true, "playback" to false,
                         "multitaskingCameraAccess" to false, "rtmpPing" to true,
@@ -369,6 +369,12 @@ class MethodCallHandlerImplNew(
                     call.argument<Number>("scale")?.toDouble(),
                     result
                 ) ?: result.error("no_camera", "Camera not initialized", null)
+            }
+            "overlayCommand" -> {
+                val data=call.arguments as? Map<*,*>
+                if(data==null)result.error("overlayError","Overlay command must be a map",null)
+                else getCameraView()?.overlayCommand(data,result)
+                    ?:result.error("no_camera","Camera not initialized",null)
             }
             "setOverlayImage" -> {
                 getCameraView()?.setOverlayImage(
