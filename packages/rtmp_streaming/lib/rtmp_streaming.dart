@@ -429,9 +429,13 @@ class CameraException implements Exception {
 
 // Build the UI texture view of the video data with textureId.
 class CameraPreview extends StatelessWidget {
-  const CameraPreview(this.controller, {super.key});
+  const CameraPreview(this.controller, {super.key,this.onCreated});
 
   final CameraController controller;
+
+  /// Called after Android creates the native view, before camera frames may arrive.
+  /// Suitable for registering overlays. Camera controls require an active preview.
+  final VoidCallback? onCreated;
 
   @override
   Widget build(BuildContext context) {
@@ -441,6 +445,7 @@ class CameraPreview extends StatelessWidget {
         childView = AndroidView(
           viewType: 'hybrid-view-type',
           creationParamsCodec: const StandardMessageCodec(),
+          onPlatformViewCreated: (id)=>onCreated?.call(),
         );
       } else {
         childView = Texture(textureId: controller._textureId!);

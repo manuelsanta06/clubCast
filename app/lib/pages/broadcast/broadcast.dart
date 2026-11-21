@@ -3,8 +3,8 @@ import 'package:app/l10n/app_localizations.dart';
 import 'package:app/widgets/glintedButton.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
+import 'broadcastScenes.dart';
 
-enum BroadcastScene{preMatch,match,halftime,penalty,postMatch}
 enum BroadcastState{
   idle,
   connecting,
@@ -38,7 +38,7 @@ class BroadcastPage extends StatefulWidget{
 }
 
 class _BroadcastPageState extends State<BroadcastPage>{
-  final streamUrl='rtmp://192.168.1.74:1935';
+  final streamUrl='rtmp://192.168.1.78:1935';
   final streamKey='test';
 
   final _cameraController=CameraController(
@@ -48,11 +48,13 @@ class _BroadcastPageState extends State<BroadcastPage>{
 
   String? _cameraError;
   BroadcastState state=BroadcastState.connecting;
-  BroadcastScene scene=BroadcastScene.preMatch;
+  late final BroadcastScenes scenes;
 
   @override
   void initState(){
     super.initState();
+    scenes=BroadcastScenes(_cameraController);
+    scenes.addListener(_onScenesChanged);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       //DeviceOrientation.landscapeRight,
@@ -71,6 +73,8 @@ class _BroadcastPageState extends State<BroadcastPage>{
   }
   @override
   void dispose(){
+    scenes.removeListener(_onScenesChanged);
+    scenes.dispose();
     _cameraController.removeListener(_onCameraChanged);
     _cameraController.dispose();
     super.dispose();
@@ -78,152 +82,148 @@ class _BroadcastPageState extends State<BroadcastPage>{
 
   @override
   Widget build(BuildContext context){
-  _cameraController.setOverlayText(text:"hola");
     final l10n=AppLocalizations.of(context)!;
     return Scaffold(body:SafeArea(child:
-        Row(children:[
-          Expanded(flex:60,child:Column(children:[
-            Expanded(child:Center(
-              child:ValueListenableBuilder<CameraValue>(
-                valueListenable:_cameraController,
-                builder:(context,value,child){
-                  if(_cameraError!=null){
-                    return Text(l10n.cameraUnavailable);
-                  }
+      Row(children:[
+        Expanded(flex:60,child:Column(children:[
+          Expanded(child:Center(
+            child:ValueListenableBuilder<CameraValue>(
+              valueListenable:_cameraController,
+              builder:(context,value,child){
+                if(_cameraError!=null){
+                  return Text(l10n.cameraUnavailable);
+                }
 
-                  if(value.isInitialized!=true)
-                    return const CircularProgressIndicator();
+                if(value.isInitialized!=true){
+                  return const CircularProgressIndicator();
+                }
 
-                  return AspectRatio(
-                    aspectRatio:value.aspectRatio,
-                    child:CameraPreview(_cameraController),
-                  );
-                },
-              ),
-            )),
-            SegmentedButton<BroadcastScene>(
-              showSelectedIcon:false,
-              selected:{scene},
-              segments:const[
-                ButtonSegment<BroadcastScene>(
-                  value:BroadcastScene.preMatch,
-                  label:Text("pre")
-                ),
-                ButtonSegment<BroadcastScene>(
-                  value:BroadcastScene.match,
-                  label:Text("partido")
-                ),
-                ButtonSegment<BroadcastScene>(
-                  value:BroadcastScene.penalty,
-                  label:Text("zoom")
-                ),
-                ButtonSegment<BroadcastScene>(
-                  value:BroadcastScene.halftime,
-                  label:Text("entre tiempo")
-                ),
-                ButtonSegment<BroadcastScene>(
-                  value:BroadcastScene.postMatch,
-                  label:Text("fin")
-                ),
-              ],
-              onSelectionChanged:(Set<BroadcastScene> newSelection){
-                setState((){scene=newSelection.first;});
+                return AspectRatio(
+                  aspectRatio:value.aspectRatio,
+                  child:CameraPreview(_cameraController,onCreated:scenes.setup),
+                );
               },
-              style:SegmentedButton.styleFrom(
-                side:BorderSide(color:Colors.red),
-              )
             ),
+          )),
+          SegmentedButton<BroadcastScene>(
+            showSelectedIcon:false,
+            selected:{scenes.scene},
+            segments:const[
+              ButtonSegment<BroadcastScene>(
+                value:BroadcastScene.match,
+                label:Text("partido")
+              ),
+              ButtonSegment<BroadcastScene>(
+                value:BroadcastScene.penalty,
+                label:Text("zoom")
+              ),
+            ],
+            onSelectionChanged:scenes.ready && !scenes.changing
+              ?(selection)=>scenes.changeScene(selection.first):null,
+            style:SegmentedButton.styleFrom(
+              side:BorderSide(color:Colors.red),
+            )
+          ),
 
-          ])),
-          Expanded(flex:40,child:Column(spacing:8,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-            //TOP BAR
-            Row(spacing:5,children:[
-              _buildBroadcastControl(),
-              const Spacer(),
-              GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.negative,
-                padding:EdgeInsets.all(5),
-                borderRadius:BorderRadius.circular(10),
-                child:Icon(Icons.mic_off),
+        ])),
+        Expanded(flex:40,child:Column(spacing:8,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          //TOP BAR
+          Row(spacing:5,children:[
+            _buildBroadcastControl(),
+            const Spacer(),
+            GlintedButton(
+              onPressed:(){},
+              mainColor:BroadcastColors.negative,
+              padding:EdgeInsets.all(5),
+              borderRadius:BorderRadius.circular(10),
+              child:Icon(Icons.mic_off),
+            ),
+            GlintedButton(
+              onPressed:(){},
+              mainColor:Colors.yellow.shade700,
+              padding:EdgeInsets.all(5),
+              borderRadius:BorderRadius.circular(10),
+              child:Icon(Icons.qr_code),
+            ),
+            GlintedButton(
+              onPressed:(){},
+              mainColor:Colors.yellow,
+              padding:EdgeInsets.all(5),
+              borderRadius:BorderRadius.circular(10),
+              child:Icon(Icons.settings),
+            )
+          ]),
+          //INFO
+          Row(spacing:8,children:[
+            Expanded(child:AspectRatio(aspectRatio:4,child:GlintedButton(
+              onPressed:!scenes.ready && !scenes.changing?scenes.setup:null,
+              mainColor:scenes.error==null?BroadcastColors.grey:BroadcastColors.negative,
+              child:Text(
+                scenes.error??(scenes.ready
+                  ?'Local ${scenes.score} Visitante · ${scenes.time}'
+                  :'Preparando tanteador…'),
+                textAlign:TextAlign.center,
               ),
-              GlintedButton(
-                onPressed:(){},
-                mainColor:Colors.yellow.shade700,
-                padding:EdgeInsets.all(5),
-                borderRadius:BorderRadius.circular(10),
-                child:Icon(Icons.qr_code),
-              ),
-              GlintedButton(
-                onPressed:(){},
-                mainColor:Colors.yellow,
-                padding:EdgeInsets.all(5),
-                borderRadius:BorderRadius.circular(10),
-                child:Icon(Icons.settings),
-              )
-            ]),
-            //INFO
-            Row(spacing:8,children:[
-              Expanded(child:AspectRatio(aspectRatio:4,child:GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.grey,
-                child:Icon(Icons.abc),
-              ))),
-            ]),
-            //GOLES
-            Row(spacing:8,children:[
-              Expanded(child:AspectRatio(aspectRatio:1,child:GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.positive,
-                child:Text("+1 L"),
-              ))),
-              Expanded(child:AspectRatio(aspectRatio:1,child:GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.negative,
-                child:Text("-1 L")
-              ))),
-              Expanded(child:AspectRatio(aspectRatio:1,child:GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.positive,
-                child:Text("+1 V")
-              ))),
-              Expanded(child:AspectRatio(aspectRatio:1,child:GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.negative,
-                child:Text("-1 V")
-              ))),
-            ]),
-            //TIME
-            Row(spacing:8,children:[
-              Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.positive,
-                child:Text("+60s"),
-              ))),
-              Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.positive,
-                child:Text("+1s")
-              ))),
-              Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.grey,
-                child:Icon(Icons.play_arrow),
-              ))),
-              Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.negative,
-                child:Text("-60s")
-              ))),
-              Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
-                onPressed:(){},
-                mainColor:BroadcastColors.negative,
-                child:Text("-1s")
-              ))),
-            ]),
-          ])),
-        ])
+            ))),
+          ]),
+          //GOLES
+          Row(spacing:8,children:[
+            Expanded(child:AspectRatio(aspectRatio:1,child:GlintedButton(
+              onPressed:scenes.ready?()=>scenes.changeGoals(home:true,delta:1):null,
+              mainColor:BroadcastColors.positive,
+              child:Text("+1 L"),
+            ))),
+            Expanded(child:AspectRatio(aspectRatio:1,child:GlintedButton(
+              onPressed:scenes.ready?()=>scenes.changeGoals(home:true,delta:-1):null,
+              mainColor:BroadcastColors.negative,
+              child:Text("-1 L")
+            ))),
+            Expanded(child:AspectRatio(aspectRatio:1,child:GlintedButton(
+              onPressed:scenes.ready?()=>scenes.changeGoals(home:false,delta:1):null,
+              mainColor:BroadcastColors.positive,
+              child:Text("+1 V")
+            ))),
+            Expanded(child:AspectRatio(aspectRatio:1,child:GlintedButton(
+              onPressed:scenes.ready?()=>scenes.changeGoals(home:false,delta:-1):null,
+              mainColor:BroadcastColors.negative,
+              child:Text("-1 V")
+            ))),
+          ]),
+          //TIME
+          Row(spacing:8,children:[
+            Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
+              onPressed:scenes.ready?()=>scenes.adjustTime(60):null,
+              mainColor:BroadcastColors.positive,
+              child:Text("+60s"),
+            ))),
+            Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
+              onPressed:scenes.ready?()=>scenes.adjustTime(1):null,
+              mainColor:BroadcastColors.positive,
+              child:Text("+1s")
+            ))),
+            Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
+              onPressed:scenes.ready?scenes.toggleClock:null,
+              mainColor:scenes.running?BroadcastColors.negative:BroadcastColors.grey,
+              child:Icon(scenes.running?Icons.pause:Icons.play_arrow),
+            ))),
+            Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
+              onPressed:scenes.ready?()=>scenes.adjustTime(-60):null,
+              mainColor:BroadcastColors.negative,
+              child:Text("-60s")
+            ))),
+            Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
+              onPressed:scenes.ready?()=>scenes.adjustTime(-1):null,
+              mainColor:BroadcastColors.negative,
+              child:Text("-1s")
+            ))),
+          ]),
+        ])),
+      ])
     ));
+  }
+
+  void _onScenesChanged(){
+    if(mounted)setState((){});
   }
 
   Future<void> _initializeCamera()async{
@@ -288,7 +288,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
     switch (state){
       case BroadcastState.idle:
         return GlintedButton(
-          onPressed:_startStreaming,
+          onPressed:scenes.ready && !scenes.changing?_startStreaming:null,
           mainColor:BroadcastColors.positive,
           padding:EdgeInsets.symmetric(vertical:5,horizontal:3),
           child:Row(children:[Icon(Icons.play_arrow),Text('Transmitir')]),
