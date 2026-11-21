@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:rtmp_streaming/rtmp_streaming.dart';
+import 'scoreboard.dart';
 
 enum BroadcastScene{match,penalty}
 
@@ -13,9 +14,10 @@ class SceneConfig{
 }
 
 class BroadcastScenes extends ChangeNotifier{
-  BroadcastScenes(this.camera);
+  BroadcastScenes(this.camera,{this.homeName='SAGAB',this.awayName='Platense'});
 
   final CameraController camera;
+  final String homeName,awayName;
   static const configs={
     BroadcastScene.match:SceneConfig(zoom:1,visibleModules:{'scoreboard'}),
     BroadcastScene.penalty:SceneConfig(zoom:2,visibleModules:{'scoreboard'}),
@@ -41,35 +43,20 @@ class BroadcastScenes extends ChangeNotifier{
   }
 
   Future<void> setup() async{
-    if(_disposed || ready || changing)return;
+    if(_disposed||ready||changing)return;
     changing=true;
     error=null;
     notifyListeners();
     try{
-      await camera.overlays.add(OverlayModule(
-        id:'scoreboard',width:400,height:116,x:32,y:32,zIndex:10,
-        elements:[
-          const OverlayRect(id:'background',width:400,height:116,colorArgb:0xE610131D),
-          const OverlayRect(id:'accent',width:400,height:4,colorArgb:0xFF7656B3),
-          // Reserved space for the two club badges.
-          const OverlayRect(id:'homeBadge',x:12,y:20,width:52,height:52,colorArgb:0xFF30374B),
-          const OverlayRect(id:'awayBadge',x:336,y:20,width:52,height:52,colorArgb:0xFF30374B),
-          const OverlayText(id:'homeName',text:'LOCAL',x:72,y:8,width:100,height:24,
-            fontSize:18,align:OverlayTextAlign.center),
-          const OverlayText(id:'awayName',text:'VISITANTE',x:228,y:8,width:100,height:24,
-            fontSize:18,align:OverlayTextAlign.center),
-          OverlayText(id:'score',text:score,x:72,y:30,width:256,height:50,
-            fontSize:40,bold:true,align:OverlayTextAlign.center),
-          OverlayText(id:'clock',text:time,x:144,y:78,width:112,height:32,
-            fontSize:24,align:OverlayTextAlign.center),
-        ],
+      await camera.overlays.add(createScoreboard(
+        homeName:homeName,awayName:awayName,score:score,time:time,
       ));
       if(_disposed)return;
       ready=true;
       _lastTime=time;
     }catch(exception){
       if(!_disposed){
-        error='No se pudo preparar el tanteador. Tocá para reintentar.';
+        error='No se pudo preparar el tanteador. Toca para reintentar.';
         debugPrint('Scoreboard setup failed: $exception');
       }
     }finally{
@@ -78,8 +65,8 @@ class BroadcastScenes extends ChangeNotifier{
     }
   }
 
-  Future<void> changeScene(BroadcastScene next) async{
-    if(_disposed || !ready || changing || next==scene)return;
+  Future<void> changeScene(BroadcastScene next)async{
+    if(_disposed||!ready||changing||next==scene)return;
     changing=true;
     error=null;
     notifyListeners();
