@@ -4,6 +4,7 @@ import 'package:app/widgets/glintedButton.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'broadcastScenes.dart';
+import 'broadcastInfo.dart';
 
 enum BroadcastState{
   idle,
@@ -53,6 +54,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
   @override
   void initState(){
     super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     scenes=BroadcastScenes(_cameraController);
     scenes.addListener(_onScenesChanged);
     SystemChrome.setPreferredOrientations([
@@ -73,6 +75,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
   }
   @override
   void dispose(){
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     scenes.removeListener(_onScenesChanged);
     scenes.dispose();
     _cameraController.removeListener(_onCameraChanged);
@@ -83,29 +86,27 @@ class _BroadcastPageState extends State<BroadcastPage>{
   @override
   Widget build(BuildContext context){
     final l10n=AppLocalizations.of(context)!;
-    return Scaffold(body:SafeArea(child:
-      Row(children:[
-        Expanded(flex:60,child:Column(children:[
-          Expanded(child:Center(
-            child:ValueListenableBuilder<CameraValue>(
-              valueListenable:_cameraController,
-              builder:(context,value,child){
-                if(_cameraError!=null){
-                  return Text(l10n.cameraUnavailable);
-                }
+    return Scaffold(body:SafeArea(left:false,right:false,child:
+      Row(spacing:5,children:[
+        Expanded(flex:60,child:Column(mainAxisAlignment:MainAxisAlignment.end,children:[
+          ValueListenableBuilder<CameraValue>(
+            valueListenable:_cameraController,
+            builder:(context,value,child){
+              if(_cameraError!=null){
+                return Text(l10n.cameraUnavailable);
+              }
 
-                if(value.isInitialized!=true){
-                  return const CircularProgressIndicator();
-                }
+              if(value.isInitialized!=true){
+                return const CircularProgressIndicator();
+              }
 
-                return AspectRatio(
-                  aspectRatio:value.aspectRatio,
-                  child:CameraPreview(_cameraController,onCreated:scenes.setup),
-                );
-              },
-            ),
-          )),
-          SegmentedButton<BroadcastScene>(
+              return AspectRatio(
+                aspectRatio:value.aspectRatio,
+                child:CameraPreview(_cameraController,onCreated:scenes.setup),
+              );
+            },
+          ),
+          Expanded(child:SegmentedButton<BroadcastScene>(
             showSelectedIcon:false,
             selected:{scenes.scene},
             segments:const[
@@ -123,10 +124,10 @@ class _BroadcastPageState extends State<BroadcastPage>{
             style:SegmentedButton.styleFrom(
               side:BorderSide(color:Colors.red),
             )
-          ),
-
+          )),
         ])),
-        Expanded(flex:40,child:Column(spacing:8,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Expanded(flex:40,child:Column(spacing:5,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          //SizedBox(height:8),
           //TOP BAR
           Row(spacing:5,children:[
             _buildBroadcastControl(),
@@ -154,20 +155,9 @@ class _BroadcastPageState extends State<BroadcastPage>{
             )
           ]),
           //INFO
-          Row(spacing:8,children:[
-            Expanded(child:AspectRatio(aspectRatio:4,child:GlintedButton(
-              onPressed:!scenes.ready && !scenes.changing?scenes.setup:null,
-              mainColor:scenes.error==null?BroadcastColors.grey:BroadcastColors.negative,
-              child:Text(
-                scenes.error??(scenes.ready
-                  ?'Local ${scenes.score} Visitante · ${scenes.time}'
-                  :'Preparando tanteador…'),
-                textAlign:TextAlign.center,
-              ),
-            ))),
-          ]),
+          _buildInfo(),
           //GOLES
-          Row(spacing:8,children:[
+          Row(spacing:5,children:[
             Expanded(child:AspectRatio(aspectRatio:1,child:GlintedButton(
               onPressed:scenes.ready?()=>scenes.changeGoals(home:true,delta:1):null,
               mainColor:BroadcastColors.positive,
@@ -190,7 +180,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
             ))),
           ]),
           //TIME
-          Row(spacing:8,children:[
+          Row(spacing:5,children:[
             Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
               onPressed:scenes.ready?()=>scenes.adjustTime(60):null,
               mainColor:BroadcastColors.positive,
@@ -203,7 +193,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
             ))),
             Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
               onPressed:scenes.ready?scenes.toggleClock:null,
-              mainColor:scenes.running?BroadcastColors.negative:BroadcastColors.grey,
+              mainColor:scenes.running?BroadcastColors.negative:BroadcastColors.positive,
               child:Icon(scenes.running?Icons.pause:Icons.play_arrow),
             ))),
             Expanded(child:AspectRatio(aspectRatio:1/1.25,child:GlintedButton(
@@ -219,6 +209,17 @@ class _BroadcastPageState extends State<BroadcastPage>{
           ]),
         ])),
       ])
+    ));
+  }
+
+  Widget _buildInfo(){
+    if(scenes.ready&&scenes.error==null){
+      return BroadcastInfo(homeGoals:scenes.homeGoals,awayGoals:scenes.awayGoals,time:scenes.time);
+    }
+    return AspectRatio(aspectRatio:4,child:GlintedButton(
+      onPressed:!scenes.ready&&!scenes.changing?scenes.setup:null,
+      mainColor:scenes.error==null?BroadcastColors.grey:BroadcastColors.negative,
+      child:Text(scenes.error??'Preparando tanteador…',textAlign:TextAlign.center),
     ));
   }
 
