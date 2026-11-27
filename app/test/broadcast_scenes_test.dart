@@ -106,6 +106,72 @@ void main(){
     expect(text.text,scenes.time);
   });
 
+  test('clock mode changes preserve played time and update the video overlay',() async{
+    await scenes.setup();
+    scenes.adjustTime(5*60);
+    scenes.configureClock(countdown:true);
+    await settle();
+    expect(scenes.time,'20:00');
+    expect(scenes.elapsed,const Duration(minutes:5));
+    final clock=camera.overlays.modules['scoreboard']!.elements.whereType<OverlayText>()
+      .firstWhere((element)=>element.id=='clock');
+    expect(clock.text,'20:00');
+    scenes.toggleClock();
+    scenes.configureClock(countdown:false);
+    expect(scenes.time,'05:00');
+    expect(scenes.running,isTrue);
+  });
+
+  test('countdown corrections change visible time and stay within the period',() async{
+    await scenes.setup();
+    scenes.configureClock(countdown:true);
+    expect(scenes.time,'25:00');
+    scenes.adjustTime(-60);
+    expect(scenes.time,'24:00');
+    scenes.adjustTime(1);
+    expect(scenes.time,'24:01');
+    scenes.adjustTime(120);
+    expect(scenes.time,'25:00');
+    scenes.adjustTime(-30*60);
+    expect(scenes.time,'00:00');
+    scenes.toggleClock();
+    expect(scenes.running,isFalse);
+    scenes.adjustTime(1);
+    expect(scenes.time,'00:01');
+    await settle();
+  });
+
+  test('period duration can change before setup and while the clock is paused',() async{
+    scenes.configureClock(countdown:true,periodDuration:const Duration(minutes:20));
+    expect(calls,isEmpty);
+    await scenes.setup();
+    expect(scenes.time,'20:00');
+    scenes.adjustTime(-60);
+    scenes.configureClock(countdown:true,periodDuration:const Duration(minutes:30));
+    expect(scenes.time,'29:00');
+    expect(scenes.elapsed,const Duration(minutes:1));
+    expect(()=>scenes.configureClock(countdown:true,periodDuration:Duration.zero),throwsArgumentError);
+    await settle();
+  });
+
+  test('countdown rounds up, pauses at zero and can resume after correction',() async{
+    await scenes.setup();
+    scenes.configureClock(countdown:true,periodDuration:const Duration(seconds:1));
+    scenes.toggleClock();
+    expect(scenes.time,'00:01');
+    await Future<void>.delayed(const Duration(milliseconds:1400));
+    expect(scenes.time,'00:00');
+    expect(scenes.elapsed,const Duration(seconds:1));
+    expect(scenes.running,isFalse);
+    await settle();
+    final clock=camera.overlays.modules['scoreboard']!.elements.whereType<OverlayText>()
+      .firstWhere((element)=>element.id=='clock');
+    expect(clock.text,'00:00');
+    scenes.adjustTime(1);
+    scenes.toggleClock();
+    expect(scenes.running,isTrue);
+  });
+
   test('penalty changes camera zoom while retaining scoreboard and clock state',() async{
     await scenes.setup();
     scenes.changeGoals(home:true,delta:1);

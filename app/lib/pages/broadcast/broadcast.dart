@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'broadcastScenes.dart';
 import 'broadcastInfo.dart';
+import 'broadcastSettings.dart';
 
 enum BroadcastState{
   idle,
@@ -43,13 +44,21 @@ class _BroadcastPageState extends State<BroadcastPage>{
   final streamKey='test';
 
   final _cameraController=CameraController(
-    ResolutionPreset.veryHigh,
+    ResolutionPreset.high,
     enableAudio:true,
   );
 
   String? _cameraError;
   bool _audioMuted=false;
   bool _changingAudio=false;
+  bool _settingsOpen=false;
+  bool _videoModesReady=false;
+  List<CameraVideoMode> videoModes=const [];
+  BroadcastSettings settings=const BroadcastSettings();
+  bool get _settingsLocked=>_cameraController.value.isStreaming==true ||
+    _cameraController.value.isRecordingVideo==true ||
+    state==BroadcastState.connecting || state==BroadcastState.live ||
+    state==BroadcastState.reconnecting || state==BroadcastState.stopping;
   BroadcastState state=BroadcastState.connecting;
   late final BroadcastScenes scenes;
 
@@ -67,7 +76,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
       if(!mounted)return;
       _cameraController.addListener(_onCameraChanged);
       setState((){
-        state=_cameraController.value.isInitialized==true
+        state=_videoModesReady && _cameraError==null
           ?BroadcastState.idle
           :BroadcastState.failed;
       });
@@ -98,7 +107,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
                 return Text(l10n.cameraUnavailable);
               }
 
-              if(value.isInitialized!=true){
+              if(value.isInitialized!=true || !_videoModesReady){
                 return const CircularProgressIndicator();
               }
 
@@ -155,7 +164,9 @@ class _BroadcastPageState extends State<BroadcastPage>{
               child:Icon(Icons.qr_code),
             ),
             GlintedButton(
-              onPressed:(){},
+              onPressed:scenes.ready && !scenes.changing &&
+                  state!=BroadcastState.connecting && state!=BroadcastState.stopping
+                ?_showSettings:null,
               mainColor:Colors.yellow,
               padding:EdgeInsets.all(5),
               borderRadius:BorderRadius.circular(10),
@@ -248,6 +259,16 @@ class _BroadcastPageState extends State<BroadcastPage>{
       );
 
       await _cameraController.initialize(rearCamera);
+      final modes=await availableVideoModes(rearCamera);
+      if(!mounted)return;
+      final initialSettings=BroadcastSettings.forModes(modes);
+      await initialSettings.apply(_cameraController,streaming:false);
+      if(!mounted)return;
+      setState((){
+        videoModes=modes;
+        settings=initialSettings;
+        _videoModesReady=true;
+      });
     }catch(error){
       if(!mounted)return;
 
@@ -348,6 +369,54 @@ class _BroadcastPageState extends State<BroadcastPage>{
     }
   }
 
+  Future<void> _showSettings()async{
+    if(_settingsOpen)return;
+    _settingsOpen=true;
+    try{
+      await showDialog<void>(
+        context:context,barrierDismissible:false,barrierColor:Colors.black54,
+        builder:(context)=>BroadcastSettingsDialog(
+          settings:settings,modes:videoModes,camera:_cameraController,
+          isLocked:()=>_settingsLocked,onApply:_applySettings,
+        ),
+      );
+    }finally{
+      _settingsOpen=false;
+    }
+  }
+
+  Future<void> _applySettings(BroadcastSettings next)async{
+    final previous=settings;
+    final streaming=_settingsLocked;
+    if(!videoModes.any((mode)=>mode==next.resolution && mode.frameRates.contains(next.fps))){
+      throw ArgumentError('This resolution/FPS combination is not supported.');
+    }
+    if(streaming && (next.resolution!=previous.resolution || next.fps!=previous.fps)){
+      throw StateError('Stop streaming before changing resolution or FPS.');
+    }
+    try{
+      await next.apply(_cameraController,streaming:streaming);
+    }catch(error){
+      // A platform call can fail after changing part of the encoder configuration.
+      try{
+        await previous.apply(_cameraController,
+          streaming:_settingsLocked);
+      }catch(restoreError){
+        debugPrint('Broadcast settings restore failed: $restoreError');
+      }
+      rethrow;
+    }
+    if(mounted){
+      scenes.configureClock(countdown:next.countdown);
+      setState((){
+        settings=next;
+        if(state==BroadcastState.failed && !streaming && _cameraError==null){
+          state=BroadcastState.idle;
+        }
+      });
+    }
+  }
+
   Future<void> _toggleMicrophone()async{
     if(_changingAudio)return;
     final muted=!_audioMuted;
@@ -370,12 +439,16 @@ class _BroadcastPageState extends State<BroadcastPage>{
   void _startStreaming()async{
     setState((){state=BroadcastState.connecting;});
     try{
+      await settings.apply(_cameraController,streaming:false);
       await _cameraController.startVideoStreaming(
-        '$streamUrl/$streamKey',protocol:StreamingProtocol.rtmp);
+        '$streamUrl/$streamKey',protocol:StreamingProtocol.rtmp,bitrate:settings.bitrate);
     }catch(error){
       debugPrint('No se pudo iniciar: $error');
       if(!mounted)return;
       setState((){state=BroadcastState.failed;});
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content:Text('No se pudo iniciar la transmisión. Revisá la conexión y los ajustes de video.'),
+      ));
     }
   }
 

@@ -14,7 +14,12 @@ class SceneConfig{
 }
 
 class BroadcastScenes extends ChangeNotifier{
-  BroadcastScenes(this.camera,{this.homeName='SAGAB',this.awayName='Platense'});
+  BroadcastScenes(this.camera,{
+    this.homeName='SAGAB',this.awayName='Platense',
+    Duration periodDuration=const Duration(minutes:25),
+  }):_periodDuration=periodDuration{
+    if(periodDuration<=Duration.zero)throw ArgumentError.value(periodDuration,'periodDuration');
+  }
 
   final CameraController camera;
   final String homeName,awayName;
@@ -30,15 +35,24 @@ class BroadcastScenes extends ChangeNotifier{
 
   final Stopwatch _clock=Stopwatch();
   Duration _elapsed=Duration.zero;
+  Duration _periodDuration;
+  bool _countdown=false;
   Timer? _timer;
   bool _disposed=false;
   String _lastTime='00:00';
 
   bool get running=>_clock.isRunning;
+  bool get countdown=>_countdown;
+  Duration get periodDuration=>_periodDuration;
   Duration get elapsed=>_elapsed+_clock.elapsed;
   String get score=>'$homeGoals – $awayGoals';
   String get time{
-    final seconds=elapsed.inSeconds;
+    final remaining=periodDuration-elapsed;
+    final duration=countdown?(remaining.isNegative?Duration.zero:remaining):elapsed;
+    // Round remaining time up so 25:00 stays visible during the first second.
+    final seconds=countdown
+      ?(duration.inMicroseconds+Duration.microsecondsPerSecond-1)~/Duration.microsecondsPerSecond
+      :duration.inSeconds;
     return '${(seconds~/60).toString().padLeft(2,'0')}:${(seconds%60).toString().padLeft(2,'0')}';
   }
 
@@ -125,6 +139,7 @@ class BroadcastScenes extends ChangeNotifier{
 
   void toggleClock(){
     if(_disposed || !ready)return;
+    if(countdown && !running && elapsed>=periodDuration)return;
     if(running){
       _clock.stop();
       _timer?.cancel();
@@ -139,19 +154,39 @@ class BroadcastScenes extends ChangeNotifier{
 
   void adjustTime(int seconds){
     if(_disposed || !ready)return;
-    final adjusted=elapsed+Duration(seconds:seconds);
-    _elapsed=adjusted.isNegative?Duration.zero:adjusted;
+    final adjusted=elapsed+Duration(seconds:countdown?-seconds:seconds);
+    _elapsed=adjusted.isNegative?Duration.zero:
+      (countdown && adjusted>periodDuration?periodDuration:adjusted);
     _clock.reset();
     _refreshTime();
   }
 
+  void configureClock({required bool countdown,Duration? periodDuration}){
+    if(_disposed)return;
+    if(periodDuration!=null && periodDuration<=Duration.zero){
+      throw ArgumentError.value(periodDuration,'periodDuration');
+    }
+    _periodDuration=periodDuration??_periodDuration;
+    _countdown=countdown;
+    _refreshTime();
+    notifyListeners();
+  }
+
   void _refreshTime(){
     if(_disposed)return;
+    var stopped=false;
+    if(countdown && elapsed>=periodDuration){
+      stopped=running;
+      _elapsed=periodDuration;
+      _clock.stop();
+      _clock.reset();
+      _timer?.cancel();
+    }
     final text=time;
-    if(text==_lastTime)return;
+    if(text==_lastTime && !stopped)return;
     _lastTime=text;
     notifyListeners();
-    unawaited(_writeText('clock',text));
+    if(ready)unawaited(_writeText('clock',text));
   }
 
   Future<void> _writeText(String id,String text) async{

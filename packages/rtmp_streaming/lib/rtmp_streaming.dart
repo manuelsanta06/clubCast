@@ -7,6 +7,9 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'src/overlays/modules.dart';
+import 'src/cameraVideoMode.dart';
+
+export 'src/cameraVideoMode.dart';
 
 export 'src/overlays/elements.dart' show OverlayElement,OverlayText,OverlayTextAlign,OverlayRect,OverlayOval,OverlayCircle,OverlayImage;
 export 'src/overlays/module.dart';
@@ -325,6 +328,23 @@ Future<List<CameraDescription>> availableCameras() async {
     }).toList();
   } on PlatformException catch (e) {
     throw CameraException(e.code, e.message);
+  }
+}
+
+/// Android camera/H.264 output modes, queried once before mounting the preview.
+/// Requires camera permission. iOS needs a separate native implementation.
+Future<List<CameraVideoMode>> availableVideoModes(CameraDescription camera) async{
+  if(camera.name==null)throw ArgumentError('A camera ID is required.');
+  if(!Platform.isAndroid){
+    throw UnsupportedError('Video mode discovery is implemented only on Android.');
+  }
+  try{
+    final data=await _channel.invokeListMethod<Map<dynamic,dynamic>>(
+      'availableVideoModes',{'cameraName':camera.name},
+    );
+    return data!.map(CameraVideoMode.fromMap).toList();
+  }on PlatformException catch(error){
+    throw CameraException(error.code,error.message);
   }
 }
 

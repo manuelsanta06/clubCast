@@ -120,6 +120,11 @@ class MethodCallHandlerImplNew(
                 handleException(e, result)
             }
 
+            "availableVideoModes" -> {
+                val cameraName=requireNotNull(call.argument<String>("cameraName")){"cameraName is required"}
+                result.success(CameraVideoModes.read(activity,cameraName))
+            }
+
             "initialize" -> {
                 Log.i("Stuff", "initialize")
                 cameraPermissions.requestPermissions(
