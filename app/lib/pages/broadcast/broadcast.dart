@@ -39,7 +39,7 @@ class BroadcastPage extends StatefulWidget{
 }
 
 class _BroadcastPageState extends State<BroadcastPage>{
-  final streamUrl='rtmp://192.168.1.78:1935';
+  final streamUrl='rtmp://192.168.1.25:1935';
   final streamKey='test';
 
   final _cameraController=CameraController(
@@ -48,6 +48,8 @@ class _BroadcastPageState extends State<BroadcastPage>{
   );
 
   String? _cameraError;
+  bool _audioMuted=false;
+  bool _changingAudio=false;
   BroadcastState state=BroadcastState.connecting;
   late final BroadcastScenes scenes;
 
@@ -126,18 +128,24 @@ class _BroadcastPageState extends State<BroadcastPage>{
             )
           )),
         ])),
-        Expanded(flex:40,child:Column(spacing:5,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Expanded(flex:40,child:Column(spacing:6,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           //SizedBox(height:8),
           //TOP BAR
           Row(spacing:5,children:[
             _buildBroadcastControl(),
             const Spacer(),
-            GlintedButton(
-              onPressed:(){},
-              mainColor:BroadcastColors.negative,
-              padding:EdgeInsets.all(5),
-              borderRadius:BorderRadius.circular(10),
-              child:Icon(Icons.mic_off),
+            Tooltip(
+              message:_audioMuted?'Activar micrófono':'Silenciar micrófono',
+              child:GlintedButton(
+                onPressed:scenes.ready&&!_changingAudio&&
+                    state!=BroadcastState.connecting&&state!=BroadcastState.stopping
+                  ?_toggleMicrophone:null,
+                mainColor:_changingAudio?BroadcastColors.grey:
+                  (_audioMuted?BroadcastColors.negative:BroadcastColors.positive),
+                padding:EdgeInsets.all(5),
+                borderRadius:BorderRadius.circular(10),
+                child:Icon(_changingAudio?Icons.more_horiz:(_audioMuted?Icons.mic_off:Icons.mic)),
+              ),
             ),
             GlintedButton(
               onPressed:(){},
@@ -337,6 +345,25 @@ class _BroadcastPageState extends State<BroadcastPage>{
           padding:EdgeInsets.symmetric(vertical:5,horizontal:3),
           child:Text('Reintentar'),
         );
+    }
+  }
+
+  Future<void> _toggleMicrophone()async{
+    if(_changingAudio)return;
+    final muted=!_audioMuted;
+    setState((){_changingAudio=true;});
+    try{
+      await _cameraController.setAudioMuted(muted);
+      if(!mounted)return;
+      setState((){_audioMuted=muted;});
+    }catch(error){
+      debugPrint('Microphone toggle failed: $error');
+      if(!mounted)return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content:Text('No se pudo cambiar el estado del micrófono. Intentá nuevamente.'),
+      ));
+    }finally{
+      if(mounted)setState((){_changingAudio=false;});
     }
   }
 
