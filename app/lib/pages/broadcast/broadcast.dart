@@ -109,6 +109,10 @@ class _BroadcastPageState extends State<BroadcastPage>{
             selected:{scenes.scene},
             segments:const[
               ButtonSegment<BroadcastScene>(
+                value:BroadcastScene.preMatch,
+                label:Text('Prepartido'),
+              ),
+              ButtonSegment<BroadcastScene>(
                 value:BroadcastScene.match,
                 label:Text("partido")
               ),
@@ -116,10 +120,16 @@ class _BroadcastPageState extends State<BroadcastPage>{
                 value:BroadcastScene.penalty,
                 label:Text("zoom")
               ),
+              ButtonSegment<BroadcastScene>(
+                value:BroadcastScene.halftime,
+                label:Text('Entretiempo'),
+              ),
             ],
             onSelectionChanged:scenes.ready && !scenes.changing
               ?(selection)=>scenes.changeScene(selection.first):null,
             style:SegmentedButton.styleFrom(
+              padding:const EdgeInsets.symmetric(horizontal:8),
+              shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(12)),
               side:BorderSide(color:Colors.red),
             )
           )),

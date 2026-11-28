@@ -81,6 +81,8 @@ class OverlayModules{
   });
 
   /// Placement changes reuse the module texture; they do not repaint its content.
+  Future<void> place(String id,{required double x,required double y,double scale=1})=>
+    _place(id,(module)=>module.copyWith(x:x,y:y,scale:scale));
   Future<void> move(String id,{required double x,required double y})=>
     _place(id,(module)=>module.copyWith(x:x,y:y));
   Future<void> setScale(String id,double scale)=>

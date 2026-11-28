@@ -68,6 +68,23 @@ void main(){
     expect((camera.overlays.modules['scoreboard']!.elements[1] as OverlayText).text,'1–0');
   });
 
+  test('combined placement sends one update and retains the existing elements',() async{
+    await camera.overlays.add(scoreboard());
+    final elements=camera.overlays.modules['scoreboard']!.elements;
+    calls.clear();
+    await camera.overlays.place('scoreboard',x:320,y:280,scale:2);
+    final args=calls.single.arguments as Map;
+    expect(args['action'],'place');
+    expect(args['x'],320);
+    expect(args['y'],280);
+    expect(args['scale'],2);
+    expect(args.containsKey('elements'),isFalse);
+    expect(camera.overlays.modules['scoreboard']!.elements,elements);
+    await expectLater(camera.overlays.place('scoreboard',x:0,y:0,scale:0),throwsArgumentError);
+    expect(camera.overlays.modules['scoreboard']!.scale,2);
+    expect(calls,hasLength(1));
+  });
+
   test('failed updates preserve local state and do not poison later requests',() async{
     await camera.overlays.add(scoreboard());
     var fail=true;

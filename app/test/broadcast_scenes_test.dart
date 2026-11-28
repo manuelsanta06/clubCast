@@ -54,8 +54,8 @@ void main(){
     expect(scenes.score,'0 – 0');
     expect(scenes.time,'00:00');
     expect(scenes.running,isFalse);
-    expect(calls,hasLength(3));
-    expect(calls.map((call)=>(call.arguments as Map)['action']),['image','image','add']);
+    expect(calls,hasLength(4));
+    expect(calls.map((call)=>(call.arguments as Map)['action']),['image','image','add','add']);
     for(final call in calls.take(2)){
       final args=call.arguments as Map;
       expect(args['maxWidth'],64);
@@ -67,13 +67,136 @@ void main(){
     expect(module.elements.map((element)=>element.id),containsAll(['homeBadge','awayBadge','score','clock']));
     expect(module.elements.whereType<OverlayImage>().map((image)=>image.imageId),['homeBadge','awayBadge']);
     expect(module.elements.whereType<OverlayText>().firstWhere((text)=>text.id=='awayName').text,'GASOLERAS');
+    expect(camera.overlays.modules['sceneMessage']!.visible,isFalse);
+  });
+
+  test('pre-match shows the starting message at bottom left and retains match data',() async{
+    await scenes.setup();
+    scenes.changeGoals(home:true,delta:2);
+    scenes.adjustTime(42);
+    await settle();
+    await scenes.changeScene(BroadcastScene.penalty);
+    await scenes.changeScene(BroadcastScene.preMatch);
+    final message=camera.overlays.modules['sceneMessage']!;
+    expect(message.visible,isTrue);
+    expect(message.x,32);
+    expect(message.y+message.height,720-32);
+    expect(message.elements.whereType<OverlayText>().single.text,'ya empieza');
+    expect(camera.overlays.modules['scoreboard']!.visible,isFalse);
+    expect(calls.where((call)=>call.method=='setZoom').last.arguments,{'zoom':1.0});
+    scenes.changeGoals(home:false,delta:1);
+    await settle();
+    await scenes.changeScene(BroadcastScene.match);
+    expect(camera.overlays.modules['sceneMessage']!.visible,isFalse);
+    expect(camera.overlays.modules['scoreboard']!.visible,isTrue);
+    expect(scenes.score,'2 – 1');
+    expect(scenes.time,'00:42');
+  });
+
+  test('halftime centers horizontally at the top, shows its message and restores match placement',() async{
+    await scenes.setup();
+    final original=camera.overlays.modules['scoreboard']!;
+    calls.clear();
+    await scenes.changeScene(BroadcastScene.halftime);
+    final centered=camera.overlays.modules['scoreboard']!;
+    expect(centered.scale,greaterThan(1));
+    expect(centered.scale,lessThanOrEqualTo(2));
+    expect(centered.x+centered.width*centered.scale/2,640);
+    expect(centered.y,32);
+    expect(centered.elements,original.elements);
+    expect(calls.where((call)=>call.method=='overlayCommand' && (call.arguments as Map)['id']=='scoreboard')
+      .map((call)=>(call.arguments as Map)['action']),['place']);
+    final message=camera.overlays.modules['sceneMessage']!;
+    expect(message.visible,isTrue);
+    expect(message.x,32);
+    expect(message.y+message.height,720-32);
+    expect(message.elements.whereType<OverlayText>().single.text,'entretiempo');
+    scenes.changeGoals(home:true,delta:1);
+    scenes.adjustTime(60);
+    await settle();
+    await scenes.changeScene(BroadcastScene.match);
+    final restored=camera.overlays.modules['scoreboard']!;
+    expect(restored.x,original.x);
+    expect(restored.y,original.y);
+    expect(restored.scale,1);
+    expect(restored.visible,isTrue);
+    expect(camera.overlays.modules['sceneMessage']!.visible,isFalse);
+    expect(restored.elements.whereType<OverlayText>().firstWhere((text)=>text.id=='score').text,'1 – 0');
+    expect(restored.elements.whereType<OverlayText>().firstWhere((text)=>text.id=='clock').text,'01:00');
+    await scenes.changeScene(BroadcastScene.preMatch);
+    expect(camera.overlays.modules['sceneMessage']!.elements.whereType<OverlayText>().single.text,'ya empieza');
+  });
+
+  test('long team names keep the enlarged halftime scoreboard inside the frame',() async{
+    scenes.dispose();
+    scenes=BroadcastScenes(camera,
+      homeName:List.filled(200,'A').join(),awayName:List.filled(200,'B').join());
+    await scenes.setup();
+    await scenes.changeScene(BroadcastScene.halftime);
+    final scoreboard=camera.overlays.modules['scoreboard']!;
+    expect(scoreboard.scale,lessThan(2));
+    expect(scoreboard.x,greaterThanOrEqualTo(32));
+    expect(scoreboard.x+scoreboard.width*scoreboard.scale,lessThanOrEqualTo(1248));
+  });
+
+  test('a partial scene change restores placement and visibility on failure',() async{
+    await scenes.setup();
+    await scenes.changeScene(BroadcastScene.halftime);
+    final original=camera.overlays.modules['scoreboard']!;
+    var fail=true;
+    messenger.setMockMethodCallHandler(channel,(call) async{
+      if(call.method=='overlayCommand'){
+        final args=call.arguments as Map;
+        if(fail && args['action']=='place' && args['visible']==false){
+          fail=false;
+          throw PlatformException(code:'test',message:'Visibility failed');
+        }
+      }
+      return respond(call);
+    });
+    await scenes.changeScene(BroadcastScene.preMatch);
+    expect(scenes.scene,BroadcastScene.halftime);
+    expect(scenes.error,isNotNull);
+    final restored=camera.overlays.modules['scoreboard']!;
+    expect(restored.x,original.x);
+    expect(restored.y,original.y);
+    expect(restored.scale,original.scale);
+    expect(restored.visible,isTrue);
+    expect(camera.overlays.modules['sceneMessage']!.visible,isTrue);
+    expect(camera.overlays.modules['sceneMessage']!.elements.whereType<OverlayText>().single.text,'entretiempo');
+  });
+
+  test('setup can retry after the second module fails without duplicating the scoreboard',() async{
+    var fail=true;
+    messenger.setMockMethodCallHandler(channel,(call) async{
+      calls.add(call);
+      if(call.method=='overlayCommand'){
+        final args=call.arguments as Map;
+        if(fail && args['action']=='add' && (args['module'] as Map)['id']=='sceneMessage'){
+          fail=false;
+          throw PlatformException(code:'test',message:'Module creation failed');
+        }
+      }
+      return respond(call);
+    });
+    await scenes.setup();
+    expect(scenes.ready,isFalse);
+    expect(camera.overlays.modules.keys,['scoreboard']);
+    await scenes.setup();
+    expect(scenes.ready,isTrue);
+    expect(camera.overlays.modules.keys,['scoreboard','sceneMessage']);
+    expect(calls.where((call){
+      if(call.method!='overlayCommand')return false;
+      final args=call.arguments as Map;
+      return args['action']=='add' && (args['module'] as Map)['id']=='scoreboard';
+    }),hasLength(1));
   });
 
   test('rapid goal changes retain the latest score and cannot go below zero',() async{
     await scenes.setup();
     scenes.changeGoals(home:true,delta:-1);
     scenes.changeGoals(home:false,delta:-1);
-    expect(calls,hasLength(3));
+    expect(calls,hasLength(4));
     scenes.changeGoals(home:true,delta:1);
     scenes.changeGoals(home:true,delta:1);
     scenes.changeGoals(home:false,delta:1);

@@ -5,13 +5,17 @@ import 'package:rtmp_streaming/rtmp_streaming.dart';
 import 'scoreboard.dart';
 import 'teamBadge.dart';
 
-enum BroadcastScene{match,penalty}
+enum BroadcastScene{preMatch,match,penalty,halftime}
 
 class SceneConfig{
-  const SceneConfig({required this.zoom,required this.visibleModules});
+  const SceneConfig({required this.zoom,required this.visibleModules,
+    this.scoreboardScale=1,this.centerScoreboardX=false,this.message});
 
   final double zoom;
   final Set<String> visibleModules;
+  final double scoreboardScale;
+  final bool centerScoreboardX;
+  final String? message;
 }
 
 class BroadcastScenes extends ChangeNotifier{
@@ -28,8 +32,11 @@ class BroadcastScenes extends ChangeNotifier{
   final String homeName,awayName;
   final TeamBadge homeBadge,awayBadge;
   static const configs={
+    BroadcastScene.preMatch:SceneConfig(zoom:1,visibleModules:{'sceneMessage'},message:'ya empieza'),
     BroadcastScene.match:SceneConfig(zoom:1,visibleModules:{'scoreboard'}),
     BroadcastScene.penalty:SceneConfig(zoom:2,visibleModules:{'scoreboard'}),
+    BroadcastScene.halftime:SceneConfig(zoom:1,visibleModules:{'scoreboard','sceneMessage'},
+      scoreboardScale:2,centerScoreboardX:true,message:'entretiempo'),
   };
 
   BroadcastScene scene=BroadcastScene.match;
@@ -70,9 +77,22 @@ class BroadcastScenes extends ChangeNotifier{
       if(_disposed)return;
       await awayBadge.load(camera.overlays,'awayBadge');
       if(_disposed)return;
-      await camera.overlays.add(createScoreboard(
-        homeName:homeName,awayName:awayName,score:score,time:time,
-      ));
+      if(!camera.overlays.modules.containsKey('scoreboard')){
+        await camera.overlays.add(createScoreboard(
+          homeName:homeName,awayName:awayName,score:score,time:time,
+        ));
+      }
+      if(_disposed)return;
+      if(!camera.overlays.modules.containsKey('sceneMessage')){
+        await camera.overlays.add(OverlayModule(
+          id:'sceneMessage',width:260,height:64,x:32,y:720-64-32,visible:false,zIndex:10,
+          elements:const [
+            OverlayRect(id:'background',width:260,height:64,colorArgb:0xB010131D),
+            OverlayText(id:'message',text:'ya empieza',x:12,y:7,width:236,height:50,
+              fontSize:36,bold:true),
+          ],
+        ));
+      }
       if(_disposed)return;
       ready=true;
       _lastTime=time;
@@ -118,7 +138,20 @@ class BroadcastScenes extends ChangeNotifier{
   Future<void> _apply(SceneConfig config,CameraControls controls) async{
     final zoom=config.zoom.clamp(controls.minZoom,controls.maxZoom).toDouble();
     await camera.setZoom(zoom);
-    // Currently both scenes share one module. Only send visibility changes when needed.
+    if(_disposed)return;
+    final scoreboard=camera.overlays.modules['scoreboard']!;
+    final scale=config.centerScoreboardX
+      ?config.scoreboardScale.clamp(0.01,(1280-64)/scoreboard.width).toDouble()
+      :config.scoreboardScale;
+    final x=config.centerScoreboardX?(1280-scoreboard.width*scale)/2:32.0;
+    const y=32.0;
+    if(scoreboard.x!=x || scoreboard.y!=y || scoreboard.scale!=scale){
+      await camera.overlays.place('scoreboard',x:x,y:y,scale:scale);
+    }
+    if(config.message!=null){
+      await camera.overlays.setText('sceneMessage','message',config.message!);
+    }
+    // Reuse both modules; scene changes only update placement and visibility.
     for(final module in camera.overlays.modules.values){
       if(_disposed)return;
       final visible=config.visibleModules.contains(module.id);
