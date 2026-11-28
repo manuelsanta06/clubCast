@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:app/pages/broadcast/broadcastScenes.dart';
+import 'package:app/pages/broadcast/teamBadge.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,7 +43,7 @@ void main(){
     debugDefaultTargetPlatformOverride=null;
   });
 
-  test('setup creates one scoreboard with badge spaces and starts paused',() async{
+  test('setup loads badges once before creating the scoreboard and starts paused',() async{
     scenes.changeGoals(home:true,delta:1);
     scenes.toggleClock();
     expect(calls,isEmpty);
@@ -52,16 +54,26 @@ void main(){
     expect(scenes.score,'0 – 0');
     expect(scenes.time,'00:00');
     expect(scenes.running,isFalse);
-    expect(calls,hasLength(1));
+    expect(calls,hasLength(3));
+    expect(calls.map((call)=>(call.arguments as Map)['action']),['image','image','add']);
+    for(final call in calls.take(2)){
+      final args=call.arguments as Map;
+      expect(args['maxWidth'],64);
+      expect(args['maxHeight'],64);
+      expect(args['trimTransparent'],isTrue);
+      expect(args['padToBounds'],isTrue);
+    }
     final module=camera.overlays.modules['scoreboard']!;
     expect(module.elements.map((element)=>element.id),containsAll(['homeBadge','awayBadge','score','clock']));
+    expect(module.elements.whereType<OverlayImage>().map((image)=>image.imageId),['homeBadge','awayBadge']);
+    expect(module.elements.whereType<OverlayText>().firstWhere((text)=>text.id=='awayName').text,'GASOLERAS');
   });
 
   test('rapid goal changes retain the latest score and cannot go below zero',() async{
     await scenes.setup();
     scenes.changeGoals(home:true,delta:-1);
     scenes.changeGoals(home:false,delta:-1);
-    expect(calls,hasLength(1));
+    expect(calls,hasLength(3));
     scenes.changeGoals(home:true,delta:1);
     scenes.changeGoals(home:true,delta:1);
     scenes.changeGoals(home:false,delta:1);
@@ -71,6 +83,26 @@ void main(){
     final text=camera.overlays.modules['scoreboard']!.elements.whereType<OverlayText>()
       .firstWhere((element)=>element.id=='score');
     expect(text.text,scenes.score);
+    expect(calls.where((call)=>(call.arguments as Map)['action']=='image'),hasLength(2));
+  });
+
+  test('downloaded badge files use the same normalization as bundled assets',() async{
+    final directory=await Directory.systemTemp.createTemp('clubcast-badge-');
+    try{
+      final data=await rootBundle.load('assets/teams/home.png');
+      final bytes=data.buffer.asUint8List(data.offsetInBytes,data.lengthInBytes);
+      final file=await File('${directory.path}/badge.png').writeAsBytes(bytes);
+      await TeamBadge.file(file.path).load(camera.overlays,'downloaded');
+      final args=calls.single.arguments as Map;
+      expect(args['id'],'downloaded');
+      expect(args['bytes'],bytes);
+      expect(args['maxWidth'],64);
+      expect(args['maxHeight'],64);
+      expect(args['trimTransparent'],isTrue);
+      expect(args['padToBounds'],isTrue);
+    }finally{
+      await directory.delete(recursive:true);
+    }
   });
 
   test('time corrections work while paused, preserve minutes and clamp at zero',() async{

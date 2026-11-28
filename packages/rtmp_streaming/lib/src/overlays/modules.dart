@@ -117,35 +117,43 @@ class OverlayModules{
   });
 
   /// Decode once, preserving aspect ratio inside the requested pixel bounds.
+  /// Optionally trim transparent margins and center on a transparent bounds-sized
+  /// canvas. This makes differently shaped badges safe to draw in equal boxes.
   /// Reusing an image ID replaces it and refreshes all modules referencing it.
-  Future<void> loadAssetImage(String id,String asset,{int maxWidth=512,int maxHeight=512})=>
+  Future<void> loadAssetImage(String id,String asset,{int maxWidth=512,int maxHeight=512,
+    bool trimTransparent=false,bool padToBounds=false})=>
     _run(() async{
       final data=await rootBundle.load(asset);
-      await _loadImage(id,data.buffer.asUint8List(data.offsetInBytes,data.lengthInBytes),maxWidth,maxHeight);
+      await _loadImage(id,data.buffer.asUint8List(data.offsetInBytes,data.lengthInBytes),
+        maxWidth,maxHeight,trimTransparent,padToBounds);
     });
 
-  Future<void> loadFileImage(String id,String path,{int maxWidth=512,int maxHeight=512})=>
+  Future<void> loadFileImage(String id,String path,{int maxWidth=512,int maxHeight=512,
+    bool trimTransparent=false,bool padToBounds=false})=>
     _run(() async{
       final file=File(path);
       _checkImageSize(await file.length());
-      await _loadImage(id,await file.readAsBytes(),maxWidth,maxHeight);
+      await _loadImage(id,await file.readAsBytes(),maxWidth,maxHeight,trimTransparent,padToBounds);
     });
 
   /// Accepts encoded PNG/JPEG/WebP bytes, including bytes downloaded by the app.
   /// Animated images use only their first frame. Loading does not perform HTTP.
-  Future<void> loadImageBytes(String id,Uint8List bytes,{int maxWidth=512,int maxHeight=512}){
+  Future<void> loadImageBytes(String id,Uint8List bytes,{int maxWidth=512,int maxHeight=512,
+    bool trimTransparent=false,bool padToBounds=false}){
     try{_checkImageSize(bytes.length);}on ArgumentError catch(error){return Future.error(error);}
     final snapshot=Uint8List.fromList(bytes);
-    return _run(() async{await _loadImage(id,snapshot,maxWidth,maxHeight);});
+    return _run(() async{await _loadImage(id,snapshot,maxWidth,maxHeight,trimTransparent,padToBounds);});
   }
 
-  Future<void> _loadImage(String id,Uint8List bytes,int maxWidth,int maxHeight) async{
+  Future<void> _loadImage(String id,Uint8List bytes,int maxWidth,int maxHeight,
+    bool trimTransparent,bool padToBounds) async{
     checkId(id);
     _checkImageSize(bytes.length);
     if(maxWidth<1 || maxWidth>2048 || maxHeight<1 || maxHeight>2048){
       throw ArgumentError('Image bounds must be within 1–2048 pixels.');
     }
-    await send({'action':'image','id':id,'bytes':bytes,'maxWidth':maxWidth,'maxHeight':maxHeight});
+    await send({'action':'image','id':id,'bytes':bytes,'maxWidth':maxWidth,'maxHeight':maxHeight,
+      'trimTransparent':trimTransparent,'padToBounds':padToBounds});
   }
 
   void _checkImageSize(int length){

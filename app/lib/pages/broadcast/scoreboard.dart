@@ -7,7 +7,7 @@ OverlayModule createScoreboard({
 }){
   const height=44.0;
   const border=2.0;
-  const badgeSize=26.0;
+  const badgeSize=height-border*2;
   const padding=10.0;
   const gap=8.0;
   const scoreWidth=112.0;
@@ -58,11 +58,10 @@ OverlayModule createScoreboard({
         colorArgb:0xFF294E70),
       OverlayRect(id:'clockBackground',x:clockX,y:border,width:clockWidth,height:height-border*2,
         colorArgb:0xFFF2F4F5),
-      // Reserve badge space at the outside edge of each team's block.
-      const OverlayRect(id:'homeBadge',x:border+padding,y:9,width:badgeSize,height:badgeSize,
-        colorArgb:0x35FFFFFF),
-      OverlayRect(id:'awayBadge',x:awayX+padding+away.width+gap,y:9,width:badgeSize,height:badgeSize,
-        colorArgb:0x35FFFFFF),
+      const OverlayImage(id:'homeBadge',imageId:'homeBadge',x:border+padding,y:border,
+        width:badgeSize,height:badgeSize),
+      OverlayImage(id:'awayBadge',imageId:'awayBadge',x:awayX+padding+away.width+gap,y:border,
+        width:badgeSize,height:badgeSize),
       OverlayText(id:'homeName',text:home.text,x:border+padding+badgeSize+gap,y:10,
         width:home.width,height:28,fontSize:fontSize),
       OverlayText(id:'awayName',text:away.text,x:awayX+padding,y:10,

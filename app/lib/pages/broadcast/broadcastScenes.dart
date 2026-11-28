@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:rtmp_streaming/rtmp_streaming.dart';
 import 'scoreboard.dart';
+import 'teamBadge.dart';
 
 enum BroadcastScene{match,penalty}
 
@@ -15,7 +16,9 @@ class SceneConfig{
 
 class BroadcastScenes extends ChangeNotifier{
   BroadcastScenes(this.camera,{
-    this.homeName='SAGAB',this.awayName='Platense',
+    this.homeName='SAGAB',this.awayName='Gasoleras',
+    this.homeBadge=const TeamBadge.asset('assets/teams/home.png'),
+    this.awayBadge=const TeamBadge.asset('assets/teams/away.png'),
     Duration periodDuration=const Duration(minutes:25),
   }):_periodDuration=periodDuration{
     if(periodDuration<=Duration.zero)throw ArgumentError.value(periodDuration,'periodDuration');
@@ -23,6 +26,7 @@ class BroadcastScenes extends ChangeNotifier{
 
   final CameraController camera;
   final String homeName,awayName;
+  final TeamBadge homeBadge,awayBadge;
   static const configs={
     BroadcastScene.match:SceneConfig(zoom:1,visibleModules:{'scoreboard'}),
     BroadcastScene.penalty:SceneConfig(zoom:2,visibleModules:{'scoreboard'}),
@@ -62,6 +66,10 @@ class BroadcastScenes extends ChangeNotifier{
     error=null;
     notifyListeners();
     try{
+      await homeBadge.load(camera.overlays,'homeBadge');
+      if(_disposed)return;
+      await awayBadge.load(camera.overlays,'awayBadge');
+      if(_disposed)return;
       await camera.overlays.add(createScoreboard(
         homeName:homeName,awayName:awayName,score:score,time:time,
       ));

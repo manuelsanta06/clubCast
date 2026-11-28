@@ -136,6 +136,8 @@ internal class OverlayScene{
         require(bytes.isNotEmpty() && bytes.size<=8*1024*1024){"Encoded image limit is 8 MiB"}
         val maxWidth=data.integer("maxWidth",1,2048)
         val maxHeight=data.integer("maxHeight",1,2048)
+        val trimTransparent=data["trimTransparent"]==true
+        val padToBounds=data["padToBounds"]==true
         require(images.containsKey(id) || images.size<128){"At most 128 images can be retained"}
         val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true}
         BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
@@ -144,7 +146,8 @@ internal class OverlayScene{
         val width=max(1,(bounds.outWidth*ratio).toInt())
         val height=max(1,(bounds.outHeight*ratio).toInt())
         val retainedBytes=images.filterKeys{it!=id}.values.sumOf{it.allocationByteCount.toLong()}
-        require(retainedBytes+width.toLong()*height*4<=imageByteBudget){"Decoded image budget exceeded (16 MiB)"}
+        val pixels=if(padToBounds)maxWidth.toLong()*maxHeight else width.toLong()*height
+        require(retainedBytes+pixels*4<=imageByteBudget){"Decoded image budget exceeded (16 MiB)"}
         var sample=1
         while(sample<(1 shl 20) && sample*2<=1/ratio){
             sample*=2
@@ -152,9 +155,27 @@ internal class OverlayScene{
         val options=BitmapFactory.Options().apply{inSampleSize=sample;inPreferredConfig=Bitmap.Config.ARGB_8888}
         val decoded=BitmapFactory.decodeByteArray(bytes,0,bytes.size,options)
             ?:throw IllegalArgumentException("Image could not be decoded")
-        val image=Bitmap.createScaledBitmap(decoded,width,height,true)
+        var image=Bitmap.createScaledBitmap(decoded,width,height,true)
         if(image!==decoded)decoded.recycle()
         try{
+            if(trimTransparent){
+                // Scan only the small decoded bitmap, never the full source image.
+                val cropped=trimImage(image)
+                if(cropped!==image)image.recycle()
+                image=cropped
+            }
+            if(padToBounds){
+                val padded=Bitmap.createBitmap(maxWidth,maxHeight,Bitmap.Config.ARGB_8888)
+                val scale=min(maxWidth.toFloat()/image.width,maxHeight.toFloat()/image.height)
+                val w=image.width*scale
+                val h=image.height*scale
+                val x=(maxWidth-w)/2
+                val y=(maxHeight-h)/2
+                paint.alpha=255
+                Canvas(padded).drawBitmap(image,null,RectF(x,y,x+w,y+h),paint)
+                image.recycle()
+                image=padded
+            }
             require(retainedBytes+image.allocationByteCount<=imageByteBudget){"Decoded image budget exceeded (16 MiB)"}
             val source=images+Pair(id,image)
             // Prepare every affected module before publishing, so a failure is atomic.
@@ -167,5 +188,23 @@ internal class OverlayScene{
             image.recycle()
             throw error
         }
+    }
+
+    private fun trimImage(image:Bitmap):Bitmap{
+        val pixels=IntArray(image.width*image.height)
+        image.getPixels(pixels,0,image.width,0,0,image.width,image.height)
+        var left=image.width
+        var top=image.height
+        var right=-1
+        var bottom=-1
+        for(y in 0 until image.height)for(x in 0 until image.width){
+            if((pixels[y*image.width+x] ushr 24)==0)continue
+            left=min(left,x)
+            top=min(top,y)
+            right=max(right,x)
+            bottom=max(bottom,y)
+        }
+        if(right<left)return image // A fully transparent image stays transparent.
+        return Bitmap.createBitmap(image,left,top,right-left+1,bottom-top+1)
     }
 }

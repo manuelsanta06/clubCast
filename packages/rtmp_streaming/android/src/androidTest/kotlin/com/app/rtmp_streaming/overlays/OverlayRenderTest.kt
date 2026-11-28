@@ -228,4 +228,30 @@ class OverlayRenderTest{
         filter.draw()
         assertPixel(60,60,Color.BLUE)
     }
+
+    @Test fun trimsTransparentMarginsAndPadsBadgesWithoutStretching(){
+        val bitmap=Bitmap.createBitmap(400,200,Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(bitmap).drawRect(100f,50f,300f,150f,
+            android.graphics.Paint().apply{color=Color.RED})
+        val bytes=ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG,100,bytes)
+        bitmap.recycle()
+        fun load(data:ByteArray){scene.execute(mapOf("action" to "image","id" to "badge",
+            "bytes" to data,"maxWidth" to 100,"maxHeight" to 100,
+            "trimTransparent" to true,"padToBounds" to true))}
+        load(bytes.toByteArray())
+        add(elements=listOf(mapOf("id" to "badge","type" to "image","imageId" to "badge",
+            "x" to 0,"y" to 0,"width" to 100,"height" to 100)))
+        val rendered=scene.frame.single().bitmap
+        // The opaque 2:1 shape occupies 100x50, centered inside a 100x100 badge.
+        assertEquals(Color.TRANSPARENT,rendered.getPixel(50,10))
+        assertEquals(Color.RED,rendered.getPixel(50,50))
+        assertEquals(Color.TRANSPARENT,rendered.getPixel(50,90))
+        filter.draw()
+        assertPixel(60,50,Color.BLUE)
+        assertPixel(60,90,Color.RED)
+        load(image(Color.TRANSPARENT))
+        filter.draw()
+        assertPixel(60,90,Color.BLUE)
+    }
 }
