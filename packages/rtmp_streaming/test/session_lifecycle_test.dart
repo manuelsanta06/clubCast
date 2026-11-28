@@ -305,4 +305,15 @@ void main() {
       expect(controller.value.isStreaming, false);
     },
   );
+
+  test('success and retry events after stop cannot resurrect an idle stream',() async{
+    await controller.startVideoStreaming('rtmp://example.invalid/live/key');
+    await controller.stopVideoStreaming();
+    final lastEvent=controller.value.event;
+    sink.success({'eventType':'success'});
+    sink.success({'eventType':'rtmp_retry'});
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.value.isStreaming,isFalse);
+    expect(controller.value.event,same(lastEvent));
+  });
 }

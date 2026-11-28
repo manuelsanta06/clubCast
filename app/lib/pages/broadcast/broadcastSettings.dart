@@ -4,7 +4,7 @@ import 'package:rtmp_streaming/rtmp_streaming.dart';
 
 class BroadcastSettings{
   const BroadcastSettings({
-    this.resolution=preferredResolution,this.fps=30,this.bitrateKbps=1200,
+    this.resolution=preferredResolution,this.fps=30,this.bitrateKbps=3000,
     this.countdown=false,
   });
 

@@ -27,7 +27,7 @@ internal object StreamConfiguration {
     fun sampleRate(codec: AudioCodec): Int = when (codec) {
         AudioCodec.OPUS -> 48000
         AudioCodec.G711 -> 8000
-        else -> 32000
+        else -> 44100
     }
 
     fun validateCodecs(protocol: String, video: VideoCodec, audio: AudioCodec): String? = when {

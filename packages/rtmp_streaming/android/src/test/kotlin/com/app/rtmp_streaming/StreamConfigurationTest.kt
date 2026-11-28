@@ -45,6 +45,7 @@ class StreamConfigurationTest {
     @Test fun codecSampleRatesMatchCaptureRequirements() {
         assertEquals(48000, StreamConfiguration.sampleRate(AudioCodec.OPUS))
         assertEquals(8000, StreamConfiguration.sampleRate(AudioCodec.G711))
-        assertEquals(32000, StreamConfiguration.sampleRate(AudioCodec.HE_AAC))
+        assertEquals(44100, StreamConfiguration.sampleRate(AudioCodec.AAC))
+        assertEquals(44100, StreamConfiguration.sampleRate(AudioCodec.HE_AAC))
     }
 }

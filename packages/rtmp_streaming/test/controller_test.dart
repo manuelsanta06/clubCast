@@ -130,7 +130,7 @@ void main() {
     expect(calls, 0);
   });
 
-  test('stop-all is idempotent after all outputs stopped', () async {
+  test('explicit stream stop clears native pending work even when Dart is idle', () async {
     controller.value = controller.value.copyWith(
       isRecordingVideo: false,
       isStreaming: false,
@@ -141,8 +141,9 @@ void main() {
       return null;
     });
     await controller.stopRecordingOrStreaming();
-    await controller.stopVideoStreaming();
     expect(stops, 0);
+    await controller.stopVideoStreaming();
+    expect(stops, 1);
   });
 
   test(

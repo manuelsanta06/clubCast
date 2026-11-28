@@ -62,6 +62,7 @@ void main(){
     final settings=BroadcastSettings.forModes(const [fullHd,hd]);
     expect(settings.resolution,hd);
     expect(settings.fps,30);
+    expect(settings.bitrateKbps,3000);
     expect(const BroadcastSettings().resolution,hd);
   });
 
@@ -114,7 +115,7 @@ void main(){
     expect(previewKey.currentState,same(preview));
     expect(preview.mounted,isTrue);
     expect(applied.resolution,fullHd);
-    expect(applied.bitrateKbps,1200);
+    expect(applied.bitrateKbps,3000);
     expect(calls,isEmpty);
   });
 

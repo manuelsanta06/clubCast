@@ -200,6 +200,7 @@ class CameraNativeView(
     private val encoderColorSettings = EncoderColorSettings()
     /** RootEncoder 2.7.0+：RTMP 周期 ping，用于 RTT（须在与 startStream 前对 RtmpStreamClient 设置） */
     private var rtmpShouldSendPings: Boolean = false
+    private var retryPending=false
     /** 自定义音频码率（bps），在 prepareAudio 时使用 */
     private var customAudioBitrate: Int? = null
     /** 自定义视频帧率，在 prepareVideo / startPreview 时使用 */
@@ -507,6 +508,8 @@ class CameraNativeView(
             val canResume = multiCamera == null && (videoSourceMode != "screen" || isRecordingNow())
             resumeStreamAfterSurfaceCreated = canResume
             isRestoringFromSurfaceDestroy = canResume
+            if(canResume)dartMessenger?.send(DartMessenger.EventType.RTMP_RETRY,
+                "Preview temporarily unavailable")
             if (!canResume) dartMessenger?.send(DartMessenger.EventType.RTMP_STOPPED,
                 "Capture stopped; restart multi streaming or request fresh screen consent")
             try {
@@ -545,12 +548,15 @@ class CameraNativeView(
     }
 
     override fun onConnectionStarted(url: String) {
+        retryPending=false
         activity?.runOnUiThread {
             dartMessenger?.send(DartMessenger.EventType.WAIT, "connection wait")
         }
     }
 
     override fun onConnectionSuccess() {
+        retryPending=false
+        activeStreamClient()?.setReTries(10)
         isRestoringFromSurfaceDestroy = false
         activity?.runOnUiThread {
             dartMessenger?.send(DartMessenger.EventType.SUCCESS, "connection success")
@@ -569,16 +575,11 @@ class CameraNativeView(
     @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     override fun onConnectionFailed(reason: String) {
         activity?.runOnUiThread {
-            val streamClient = when {
-                whipStream != null -> whipStream?.getStreamClient()
-                multiCamera != null -> {
-                    val dest = multiDestinations.firstOrNull()
-                    if (dest != null) multiCamera?.getStreamClient(dest.type, dest.index) else null
-                }
-                genericStream != null -> genericStream?.getStreamClient()
-                else -> genericCamera.streamClient
-            }
+            // Audio, video and reads can report the same outage. Queue one retry.
+            if(retryPending)return@runOnUiThread
+            val streamClient=activeStreamClient()
             if (streamClient != null && streamClient.reTry(5000, reason)) {
+                retryPending=true
                 dartMessenger?.send(DartMessenger.EventType.RTMP_RETRY, reason)
             } else {
                 dartMessenger?.send(DartMessenger.EventType.RTMP_STOPPED, "Failed retry")
@@ -586,6 +587,16 @@ class CameraNativeView(
                 stopActiveStream()
             }
         }
+    }
+
+    private fun activeStreamClient():com.pedro.library.util.streamclient.StreamBaseClient? = when{
+        whipStream!=null->whipStream?.getStreamClient()
+        multiCamera!=null->{
+            val dest=multiDestinations.firstOrNull()
+            if(dest!=null)multiCamera?.getStreamClient(dest.type,dest.index) else null
+        }
+        genericStream!=null->genericStream?.getStreamClient()
+        else->genericCamera.streamClient
     }
 
     override fun onDisconnect() {
@@ -618,7 +629,8 @@ class CameraNativeView(
             return true
         }
         val bitrate = customAudioBitrate ?: aBitrate
-        return genericCamera.prepareAudio(bitrate, 32000, true, echoCanceler, noiseSuppressor)
+        return genericCamera.prepareAudio(bitrate, StreamConfiguration.sampleRate(audioCodec),
+            audioCodec != AudioCodec.G711, echoCanceler, noiseSuppressor)
     }
 
     private fun prepareVideoEncoder(size: Size, bitrate: Int): Boolean {
@@ -1007,6 +1019,7 @@ class CameraNativeView(
         (stream.getStreamClient() as? RtmpStreamClient)?.let {
             it.setTlsHostVerification(true)
             it.shouldSendPings(rtmpShouldSendPings)
+            it.shouldFailOnRead(true)
             it.setCustomMetadata(rtmpMetadata)
         }
     }
@@ -1953,13 +1966,15 @@ class CameraNativeView(
 
     fun stopVideoStreaming(result: MethodChannel.Result) {
         try {
+            retryPending=false
             resumeStreamAfterSurfaceCreated = false
             isRestoringFromSurfaceDestroy = false
             lastStreamUrl = null
             lastStreamBitrate = null
             lastStreamProtocol = null
             lastWhipToken = null
-            stopActiveStream()
+            // Still clear delayed surface restores when idle, but keep its preview.
+            if(isStreamingNow() || multiCamera!=null)stopActiveStream()
             result.success(null)
         } catch (e: CameraAccessException) {
             result.error("stopVideoStreamingFailed", e.message, null)

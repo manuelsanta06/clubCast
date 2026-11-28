@@ -6,15 +6,7 @@ import 'package:flutter/material.dart';
 import 'broadcastScenes.dart';
 import 'broadcastInfo.dart';
 import 'broadcastSettings.dart';
-
-enum BroadcastState{
-  idle,
-  connecting,
-  live,
-  reconnecting,
-  stopping,
-  failed,
-}
+import 'broadcastSession.dart';
 
 abstract final class BroadcastColors{
   //BG
@@ -57,9 +49,11 @@ class _BroadcastPageState extends State<BroadcastPage>{
   BroadcastSettings settings=const BroadcastSettings();
   bool get _settingsLocked=>_cameraController.value.isStreaming==true ||
     _cameraController.value.isRecordingVideo==true ||
-    state==BroadcastState.connecting || state==BroadcastState.live ||
-    state==BroadcastState.reconnecting || state==BroadcastState.stopping;
-  BroadcastState state=BroadcastState.connecting;
+    session.active || session.busy;
+  BroadcastState get state=>_cameraError!=null?BroadcastState.failed:
+    (!_videoModesReady?BroadcastState.connecting:session.state);
+  late final BroadcastSession session;
+  String? _lastBroadcastError;
   late final BroadcastScenes scenes;
 
   @override
@@ -68,28 +62,21 @@ class _BroadcastPageState extends State<BroadcastPage>{
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     scenes=BroadcastScenes(_cameraController);
     scenes.addListener(_onScenesChanged);
+    session=BroadcastSession(_cameraController);
+    session.addListener(_onSessionChanged);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       //DeviceOrientation.landscapeRight,
     ]);
-    _initializeCamera().then((v){
-      if(!mounted)return;
-      _cameraController.addListener(_onCameraChanged);
-      setState((){
-        state=_videoModesReady && _cameraError==null
-          ?BroadcastState.idle
-          :BroadcastState.failed;
-      });
-    },onError:(error){
-      debugPrint(error);
-    });
+    _initializeCamera();
   }
   @override
   void dispose(){
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     scenes.removeListener(_onScenesChanged);
     scenes.dispose();
-    _cameraController.removeListener(_onCameraChanged);
+    session.removeListener(_onSessionChanged);
+    session.dispose();
     _cameraController.dispose();
     super.dispose();
   }
@@ -247,6 +234,7 @@ class _BroadcastPageState extends State<BroadcastPage>{
   }
 
   Future<void> _initializeCamera()async{
+    setState((){_cameraError=null;});
     try{
       final cameras=await availableCameras();
 
@@ -258,7 +246,9 @@ class _BroadcastPageState extends State<BroadcastPage>{
         orElse:()=>throw StateError(l10n.cameraUnavailable),
       );
 
-      await _cameraController.initialize(rearCamera);
+      if(_cameraController.value.isInitialized!=true){
+        await _cameraController.initialize(rearCamera);
+      }
       final modes=await availableVideoModes(rearCamera);
       if(!mounted)return;
       final initialSettings=BroadcastSettings.forModes(modes);
@@ -271,54 +261,26 @@ class _BroadcastPageState extends State<BroadcastPage>{
       });
     }catch(error){
       if(!mounted)return;
-
+      debugPrint('Camera initialization failed: $error');
       setState((){_cameraError='could not open camera: $error';});
     }
   }
 
-  void _onCameraChanged(){
+  void _onSessionChanged(){
     if(!mounted)return;
-
-    final event=_cameraController.value.event;
-    if(event==null)return;
-
-    final sessionActive=
-      state ==BroadcastState.connecting||
-      state ==BroadcastState.live||
-      state ==BroadcastState.reconnecting;
-      if(!sessionActive)return;
-
-      BroadcastState nextState;
-
-      switch(event['eventType']){
-        case 'success':
-          nextState=BroadcastState.live;
-          break;
-
-        case 'rtmp_retry':
-          nextState=BroadcastState.reconnecting;
-          break;
-
-        case 'rtmp_stopped':
-        case 'camera_closing':
-          nextState=BroadcastState.failed;
-          debugPrint('Transmisión interrumpida: $event');
-          break;
-
-        default:
-          return;
-      }
-
-      if(nextState==state)return;
-
-      setState((){state=nextState;});
+    setState((){});
+    final error=session.error;
+    if(error!=null && error!=_lastBroadcastError){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(error)));
+    }
+    _lastBroadcastError=error;
   }
 
   Widget _buildBroadcastControl(){
     switch (state){
       case BroadcastState.idle:
         return GlintedButton(
-          onPressed:scenes.ready && !scenes.changing?_startStreaming:null,
+          onPressed:scenes.ready && !scenes.changing && session.canStart?_startStreaming:null,
           mainColor:BroadcastColors.positive,
           padding:EdgeInsets.symmetric(vertical:5,horizontal:3),
           child:Row(children:[Icon(Icons.play_arrow),Text('Transmitir')]),
@@ -343,6 +305,17 @@ class _BroadcastPageState extends State<BroadcastPage>{
         );
 
       case BroadcastState.connecting:
+        return GlintedButton(
+          onPressed:_videoModesReady?_stopStreaming:null,
+          mainColor:_videoModesReady?BroadcastColors.negative:BroadcastColors.grey,
+          padding:EdgeInsets.symmetric(vertical:5,horizontal:3),
+          child:Row(children:[
+            SizedBox.square(dimension:IconTheme.of(context).size,
+              child:const CircularProgressIndicator(strokeWidth:2)),
+            Text(_videoModesReady?'Conectando · Cancelar':'Preparando cámara…'),
+          ]),
+        );
+
       case BroadcastState.stopping:
         return GlintedButton(
           onPressed:null,
@@ -353,18 +326,16 @@ class _BroadcastPageState extends State<BroadcastPage>{
               dimension:IconTheme.of(context).size,
               child:const CircularProgressIndicator(strokeWidth:2),
             ),
-            Text(state==BroadcastState.connecting
-              ?'Conectando…':'Deteniendo…',
-            ),
+            Text('Deteniendo…'),
           ]),
         );
 
       case BroadcastState.failed:
         return GlintedButton(
-          onPressed:_retryStreaming,
+          onPressed:session.canStart && !scenes.changing?_retryStreaming:null,
           mainColor:BroadcastColors.positive,
           padding:EdgeInsets.symmetric(vertical:5,horizontal:3),
-          child:Text('Reintentar'),
+          child:Text(session.stopFailed?'Reintentar detención':'Reintentar'),
         );
     }
   }
@@ -410,9 +381,6 @@ class _BroadcastPageState extends State<BroadcastPage>{
       scenes.configureClock(countdown:next.countdown);
       setState((){
         settings=next;
-        if(state==BroadcastState.failed && !streaming && _cameraError==null){
-          state=BroadcastState.idle;
-        }
       });
     }
   }
@@ -436,40 +404,21 @@ class _BroadcastPageState extends State<BroadcastPage>{
     }
   }
 
-  void _startStreaming()async{
-    setState((){state=BroadcastState.connecting;});
-    try{
-      await settings.apply(_cameraController,streaming:false);
-      await _cameraController.startVideoStreaming(
-        '$streamUrl/$streamKey',protocol:StreamingProtocol.rtmp,bitrate:settings.bitrate);
-    }catch(error){
-      debugPrint('No se pudo iniciar: $error');
-      if(!mounted)return;
-      setState((){state=BroadcastState.failed;});
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content:Text('No se pudo iniciar la transmisión. Revisá la conexión y los ajustes de video.'),
-      ));
-    }
+  Future<void> _startStreaming()async{
+    if(!_videoModesReady || !scenes.ready || scenes.changing)return;
+    await session.start(url:'$streamUrl/$streamKey',settings:settings);
   }
 
-  Future<void> _stopStreaming()async{
-    setState((){state=BroadcastState.stopping;});
+  Future<void> _stopStreaming()=>session.stop();
 
-    try{
-      await _cameraController.stopVideoStreaming();
-
-      if(!mounted)return;
-
-      setState((){state=BroadcastState.idle;});
-    }catch(error){
-      debugPrint('No se pudo detener la transmisión: $error');
-
-      if(!mounted)return;
-
-      setState((){state=BroadcastState.failed;});
+  Future<void> _retryStreaming()async{
+    if(!_videoModesReady){
+      await _initializeCamera();
+      return;
     }
-  }
-
-  void _retryStreaming(){
+    if(!scenes.ready)await scenes.setup();
+    if(mounted && scenes.ready && !scenes.changing){
+      await session.retry(url:'$streamUrl/$streamKey',settings:settings);
+    }
   }
 }

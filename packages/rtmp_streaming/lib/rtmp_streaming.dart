@@ -912,6 +912,7 @@ class CameraController extends ValueNotifier<CameraValue> {
         );
         break;
       case 'rtmp_retry':
+        if (_pendingStops > 0 || !_streamStartIssued) break;
         value = value.copyWith(
           errorDescription: errorDescription,
           event: uniEvent,
@@ -943,7 +944,7 @@ class CameraController extends ValueNotifier<CameraValue> {
         );
         break;
       case 'success':
-        if (_pendingStops > 0) break;
+        if (_pendingStops > 0 || !_streamStartIssued) break;
         value = value.copyWith(
           errorDescription: errorDescription,
           isStreaming: true,
@@ -2208,7 +2209,8 @@ class CameraController extends ValueNotifier<CameraValue> {
       );
     }
 
-    if (!value.isStreaming! && !_streamStartIssued) return;
+    // Native state can still contain a delayed retry or surface restore after
+    // a terminal event cleared the Dart streaming flag. Always cancel it.
     try {
       await _channel.invokeMethod<void>('stopStreaming', <String, dynamic>{});
       _destinationIds.clear();
